@@ -1,3 +1,4 @@
+import validators  # <-- Add this at the top of your file
 import logging
 import re
 import time
