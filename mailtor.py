@@ -17,8 +17,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 # Bot Settings
-TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
-ADMIN_ID = "YOUR_TELEGRAM_ID"  # Replace with your Telegram ID
+TELEGRAM_BOT_TOKEN = "7976232009:AAH0rtAnqvveLPbu06UdXz65pvivh3L4o4U"
+ADMIN_ID = "5166125467"  # Replace with your Telegram ID
 APPROVED_USERS_FILE = "approved_users.json"
 
 # Load approved users
