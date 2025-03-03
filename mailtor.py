@@ -140,7 +140,7 @@ def extract_emails_threaded(update: Update, context: CallbackContext, url, cooki
         update.message.reply_text("⚠️ No emails found or extraction failed.")
 
 # Handle URL input
-def handle_url(update: Update, context: CallbackContext) -> None:
+'''def handle_url(update: Update, context: CallbackContext) -> None:
     user_id = str(update.message.chat_id)
     
     if user_id not in APPROVED_USERS:
@@ -154,6 +154,33 @@ def handle_url(update: Update, context: CallbackContext) -> None:
 
     if not url.startswith(("http://", "https://")):
         update.message.reply_text("❌ Invalid URL! Please send a valid link.")
+        return
+
+    update.message.reply_text(
+        "🔹 Do you want me to **automate login** and fetch cookies OR will you provide cookies?\n\n"
+        "👉 **Reply with:**\n"
+        "`auto` → Bot will log in & get cookies\n"
+        "`manual` → You will provide session cookies"
+    )
+
+    context.user_data["url"] = url
+'''
+
+def handle_url(update: Update, context: CallbackContext) -> None:
+    user_id = str(update.message.chat_id)
+
+    if user_id not in APPROVED_USERS:
+        update.message.reply_text(
+            "❌ You are not approved to use this bot.\n"
+            "🔹 Contact the admin to request access." f"ADMIN EMAIL: {ADMIN_EMAIL}"
+        )
+        return
+
+    url = update.message.text.strip()
+
+    # Improved URL validation
+    if not validators.url(url):
+        update.message.reply_text("❌ Invalid URL! Please send a valid link (e.g., `https://example.com`).")
         return
 
     update.message.reply_text(
