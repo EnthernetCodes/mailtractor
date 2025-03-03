@@ -1,3 +1,4 @@
+from urllib.parse import urlparse
 import validators  # <-- Add this at the top of your file
 import logging
 import re
@@ -191,7 +192,7 @@ def extract_emails_threaded(update: Update, context: CallbackContext, url, cooki
 
     context.user_data["url"] = url
 '''
-
+'''
 def handle_url(update: Update, context: CallbackContext) -> None:
     user_id = str(update.message.chat_id)
 
@@ -212,6 +213,38 @@ def handle_url(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
         "🔹 Do you want me to automate login and fetch cookies OR will you provide cookies?\n\n"
         "👉 Reply with:\n"
+        "`auto` → Bot will log in & get cookies\n"
+        "`manual` → You will provide session cookies"
+    )
+
+    context.user_data["url"] = url
+'''
+
+def is_valid_url(url):
+    """Check if a URL is valid using urllib.parse"""
+    parsed_url = urlparse(url)
+    return bool(parsed_url.scheme and parsed_url.netloc)
+
+def handle_url(update: Update, context: CallbackContext) -> None:
+    user_id = str(update.message.chat_id)
+
+    if user_id not in APPROVED_USERS:
+        update.message.reply_text(
+            "❌ You are not approved to use this bot.\n"
+            "🔹 Contact the admin to request access."
+        )
+        return
+
+    url = update.message.text.strip()
+
+    # Validate URL using urllib.parse
+    if not is_valid_url(url):
+        update.message.reply_text("❌ Invalid URL! Please send a valid link (e.g., `https://example.com`).")
+        return
+
+    update.message.reply_text(
+        "🔹 Do you want me to **automate login** and fetch cookies OR will you provide cookies?\n\n"
+        "👉 **Reply with:**\n"
         "`auto` → Bot will log in & get cookies\n"
         "`manual` → You will provide session cookies"
     )
