@@ -251,7 +251,7 @@ def handle_url(update: Update, context: CallbackContext) -> None:
 
     context.user_data["url"] = url
 '''
-def handle_url(update: Update, context: CallbackContext) -> None:
+'''def handle_url(update: Update, context: CallbackContext) -> None:
     user_id = str(update.message.chat_id)
 
     if user_id not in APPROVED_USERS:
@@ -271,7 +271,29 @@ def handle_url(update: Update, context: CallbackContext) -> None:
         "`auto` → Bot will log in & get cookies\n"
         "`manual` → You will provide session cookies"
     )
-    context.user_data["url"] = url
+    context.user_data["url"] = url'''
+
+def handle_url(update: Update, context: CallbackContext) -> None:
+    user_id = str(update.message.chat_id)
+
+    if user_id not in APPROVED_USERS:
+        update.message.reply_text("❌ You are not approved to use this bot.\n🔹 Contact the admin to request access.")
+        return
+
+    url = update.message.text.strip()
+    logging.info(f"Received URL: {url}")  # Debugging: Log received URL
+
+    if not is_valid_url(url):  
+        update.message.reply_text(f"❌ Invalid URL! Received: `{url}`")
+        return
+
+    update.message.reply_text("🔍 Fetching session cookies... Please wait.")
+
+    # Fetch cookies automatically
+    cookies = get_cookies_via_selenium(url)  
+
+    # Start email extraction with fetched cookies
+    threading.Thread(target=extract_emails_threaded, args=(update, context, url, cookies)).start()
 
 def view_approved_users(update: Update, context: CallbackContext) -> None:
     """Admin command to view all approved users."""
