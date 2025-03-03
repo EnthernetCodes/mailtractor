@@ -113,7 +113,70 @@ def start(update: Update, context: CallbackContext) -> None:
     )
 
 # Function to extract cookies via Selenium
-def get_cookies_via_selenium(url):
+import subprocess
+
+def get_cookies_via_selenium(url, update):
+    """ Opens a browser for manual login on a remote server and tunnels it using localhost.run """
+    service = Service(ChromeDriverManager().install())
+    options = webdriver.ChromeOptions()
+
+    # Enable remote debugging for tunneling
+    options.add_argument("--remote-debugging-port=9222")  
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--no-sandbox")
+
+    driver = webdriver.Chrome(service=service, options=options)
+
+    stealth(driver, ["en-US", "en"], "Google Inc.", "Win32", "Intel Inc.", "Intel Iris OpenGL Engine", True)
+
+    try:
+        driver.get(url)
+        update.message.reply_text("🔹 **Browser Opened on Server! Setting up a secure login link...**")
+
+        # Start localhost.run tunnel
+        tunnel_cmd = "ssh -R 80:localhost:9222 nokey@localhost.run"
+        tunnel_process = subprocess.Popen(tunnel_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        # Wait for tunnel to initialize and extract the URL
+        tunnel_url = None
+        for _ in range(10):  # Wait for localhost.run to set up
+            output = tunnel_process.stdout.readline().decode().strip()
+            if "https://" in output:
+                tunnel_url = output
+                break
+            time.sleep(1)
+
+        if not tunnel_url:
+            update.message.reply_text("❌ **Tunnel failed to initialize. Try again later.**")
+            return {}
+
+        # Send the tunnel URL to the Telegram user
+        update.message.reply_text(
+            f"🔹 **Manual Login Required**\n"
+            f"🔗 Click here to log in: [Login Here]({tunnel_url})\n"
+            f"⚠️ **DO NOT close the browser until you see a confirmation!**",
+            parse_mode="Markdown"
+        )
+
+        time.sleep(30)  # Wait for user to log in
+
+        cookies = {cookie["name"]: cookie["value"] for cookie in driver.get_cookies()}
+        driver.quit()
+
+        if cookies:
+            update.message.reply_text("✅ **Session cookies captured successfully! Extracting emails now...**")
+            return cookies
+        else:
+            update.message.reply_text("⚠️ **No cookies found. Make sure you logged in properly.**")
+            return {}
+
+    except Exception as e:
+        driver.quit()
+        update.message.reply_text(f"❌ **Error: {e}**")
+        return {}
+
+'''def get_cookies_via_selenium(url):
     """ Automates login and retrieves session cookies. """
     service = Service(ChromeDriverManager().install())
     options = webdriver.ChromeOptions()
@@ -130,7 +193,7 @@ def get_cookies_via_selenium(url):
         return cookies
     except Exception as e:
         driver.quit()
-        return f"Error: {e}"
+        return f"Error: {e}" '''
 
 # Function to extract emails using Selenium with cookies
 def extract_emails_selenium(url, cookies):
@@ -331,7 +394,7 @@ def handle_cookies(update: Update, context: CallbackContext) -> None:
     context.user_data["cookies"] = cookies
     threading.Thread(target=extract_emails_threaded, args=(update, context, context.user_data["url"], cookies)).start()
 '''
-
+'''
 def handle_cookies(update: Update, context: CallbackContext) -> None:
     user_id = str(update.message.chat_id)
 
@@ -356,6 +419,30 @@ def handle_cookies(update: Update, context: CallbackContext) -> None:
     # Store cookies and start email extraction
     context.user_data["cookies"] = cookies
     threading.Thread(target=extract_emails_threaded, args=(update, context, context.user_data["url"], cookies)).start()
+'''
+
+def handle_cookies(update: Update, context: CallbackContext) -> None:
+    user_id = str(update.message.chat_id)
+
+    if user_id not in APPROVED_USERS or "url" not in context.user_data:
+        update.message.reply_text("❌ **Invalid request. Send a URL first.**")
+        return
+
+    choice = update.message.text.strip().lower()
+
+    if choice == "auto":
+        update.message.reply_text("🔍 **Setting up remote login... Please wait!**")
+
+        cookies = get_cookies_via_selenium(context.user_data["url"], update)
+
+        if cookies:
+            context.user_data["cookies"] = cookies
+            threading.Thread(target=extract_emails_threaded, args=(update, context, context.user_data["url"], cookies)).start()
+        else:
+            update.message.reply_text("⚠️ **Failed to capture session cookies. Try again.**")
+
+    else:
+        update.message.reply_text("📌 **Send your session cookies as a text message.**")
 
 # Main Function
 def main():
