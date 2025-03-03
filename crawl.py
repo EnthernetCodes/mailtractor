@@ -24,9 +24,13 @@ def extract_emails_bs4(url):
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         emails = re.findall(email_pattern, response.text)
+        if emails:
+            print(f"[INFO] Emails found using BeautifulSoup: {emails}")
+        else:
+            print("[INFO] No emails found using BeautifulSoup. Switching to Selenium...")
         return list(set(emails))
     except requests.exceptions.RequestException as e:
-        print(f"[ERROR] Requests failed: {e}")
+        print(f"[ERROR] Requests failed: {e}. Switching to Selenium...")
         return []
 
 def extract_emails_selenium(url):
@@ -36,12 +40,23 @@ def extract_emails_selenium(url):
     options.add_argument("--headless")
     options.add_argument("--disable-blink-features=AutomationControlled")
     driver = webdriver.Chrome(service=service, options=options)
-    stealth(driver, ["en-US", "en"], "Google Inc.", "Win32", "Intel Inc.", "Intel Iris OpenGL Engine", True)
+    stealth(driver,
+        languages=["en-US", "en"],
+        vendor="Google Inc.",
+        platform="Win32",
+        webgl_vendor="Intel Inc.",
+        renderer="Intel Iris OpenGL Engine",
+        fix_hairline=True
+    )
     try:
         driver.get(url)
         time.sleep(5)
         emails = re.findall(email_pattern, driver.page_source)
         driver.quit()
+        if emails:
+            print(f"[INFO] Emails found using Selenium: {emails}")
+        else:
+            print("[INFO] No emails found using Selenium.")
         return list(set(emails))
     except Exception as e:
         print(f"[ERROR] Selenium extraction failed: {e}")
@@ -59,6 +74,10 @@ def extract_js_emails(url):
             full_url = urljoin(url, js_link)
             js_content = requests.get(full_url, headers=headers).text
             emails.extend(re.findall(email_pattern, js_content))
+        if emails:
+            print(f"[INFO] Emails found in JavaScript files: {emails}")
+        else:
+            print("[INFO] No emails found in JavaScript files.")
         return list(set(emails))
     except requests.exceptions.RequestException:
         return []
@@ -78,12 +97,14 @@ def get_internal_links(url, base_url):
     except requests.exceptions.RequestException:
         return set()
 
-def crawl_site(url, depth=2):
+def crawl_site(url, depth):
     """ Recursively crawl and extract emails. """
     if url in visited_urls or depth == 0:
         return []
     visited_urls.add(url)
-    emails = extract_emails_bs4(url) or extract_emails_selenium(url)
+    emails = extract_emails_bs4(url)
+    if not emails:
+        emails = extract_emails_selenium(url)
     emails.extend(extract_js_emails(url))
     for link in get_internal_links(url, url):
         emails.extend(crawl_site(link, depth-1))
@@ -91,5 +112,6 @@ def crawl_site(url, depth=2):
 
 if __name__ == "__main__":
     url = input("Enter website URL: ")
-    emails = crawl_site(url)
+    depth = int(input("Enter crawl depth (e.g., 2, 5, 10): "))  # Get depth from user
+    emails = crawl_site(url, depth)
     print("Extracted Emails:", emails if emails else "No emails found.")
