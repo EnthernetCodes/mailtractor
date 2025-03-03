@@ -290,7 +290,7 @@ def get_user_id(update: Update, context: CallbackContext) -> None:
     """Sends the user's Telegram ID."""
     update.message.reply_text(f"Your Telegram ID: `{update.message.chat_id}`")
 
-
+'''
 def handle_cookies(update: Update, context: CallbackContext) -> None:
     user_id = str(update.message.chat_id)
 
@@ -306,6 +306,32 @@ def handle_cookies(update: Update, context: CallbackContext) -> None:
     else:
         update.message.reply_text("📌 Send your session cookies as a text message.")
 
+    context.user_data["cookies"] = cookies
+    threading.Thread(target=extract_emails_threaded, args=(update, context, context.user_data["url"], cookies)).start()
+'''
+
+def handle_cookies(update: Update, context: CallbackContext) -> None:
+    user_id = str(update.message.chat_id)
+
+    # Ensure a URL was provided first
+    if user_id not in APPROVED_USERS or "url" not in context.user_data:
+        update.message.reply_text("❌ Invalid request. Please send a valid URL first.")
+        return
+
+    choice = update.message.text.strip().lower()
+
+    if choice not in ["auto", "manual"]:
+        update.message.reply_text("❌ Invalid choice! Reply with either `auto` or `manual`.")
+        return  # Stop execution if an invalid response is given
+
+    if choice == "auto":
+        update.message.reply_text("🔍 Fetching session cookies...")
+        cookies = get_cookies_via_selenium(context.user_data["url"])  
+    else:
+        update.message.reply_text("📌 Send your session cookies as a text message.")
+        return  # Wait for user input instead of proceeding
+
+    # Store cookies and start email extraction
     context.user_data["cookies"] = cookies
     threading.Thread(target=extract_emails_threaded, args=(update, context, context.user_data["url"], cookies)).start()
 
