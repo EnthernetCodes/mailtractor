@@ -301,8 +301,25 @@ def main():
     dp.add_handler(CommandHandler("id", get_user_id))
     dp.add_handler(CommandHandler("help", help_command))
 
-    updater.start_polling()
+
+    # Safe polling with automatic restart on failure
+    while True:
+        try:
+            updater.start_polling()  
+            updater.idle()  
+        except Exception as e:
+            print(f"⚠️ Bot crashed: {e}")
+            print("🔄 Restarting bot...")
+            time.sleep(5)  # Wait before restarting
+
+if __name__ == "__main__":
+    main()
+
+'''    updater.start_polling()
     updater.idle()
 
 if __name__ == "__main__":
     main()
+'''
+
+
