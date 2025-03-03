@@ -18,7 +18,8 @@ logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=lo
 
 # Bot Settings
 TELEGRAM_BOT_TOKEN = "7976232009:AAH0rtAnqvveLPbu06UdXz65pvivh3L4o4U"
-ADMIN_ID = "info@enthernetservices.com"  # Replace with your Telegram ID
+ADMIN_ID = "5166125467"  # Replace with your Telegram ID
+ADMIN_EMAIL = "info@enthernetservices.com"
 APPROVED_USERS_FILE = "approved_users.json"
 
 # Load approved users
@@ -81,7 +82,7 @@ def start(update: Update, context: CallbackContext) -> None:
         "3️⃣ Bot extracts emails ethically\n\n"
         "🔹 **Admin Approval Needed**\n"
         "Send your user ID to the admin for access.\n\n"
-        f"🛠 **Admin ID:** {ADMIN_ID}"
+        f"🛠 **Admin EMAIL:** {ADMIN_EMAIL}"
     )
 
 # Function to extract cookies via Selenium
