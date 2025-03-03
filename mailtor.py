@@ -54,6 +54,31 @@ def approve_user(update: Update, context: CallbackContext) -> None:
     save_users()
     update.message.reply_text(f"✅ User {user_id} approved.")
 
+def help_command(update: Update, context: CallbackContext) -> None:
+    """Displays a help message with available commands."""
+    user_id = str(update.message.chat_id)
+
+    # Basic user commands
+    help_text = (
+        "🤖 **Mailtractor Bot Help**\n\n"
+        "📌 **User Commands:**\n"
+        "`/start` - Start the bot\n"
+        "`/id` - Get your Telegram ID\n"
+        "`/help` - Show this help message\n"
+        "To extract emails, send a website URL.\n\n"
+    )
+
+    # Show admin commands only if the user is the admin
+    if user_id == ADMIN_ID:
+        help_text += (
+            "🛠 **Admin Commands:**\n"
+            "`/approve <user_id>` - Approve a user\n"
+            "`/revoke <user_id>` - Revoke a user's access\n"
+            "`/users` - View all approved users\n"
+        )
+
+    update.message.reply_text(help_text, parse_mode="Markdown")
+
 # Function to revoke users
 def revoke_user(update: Update, context: CallbackContext) -> None:
     if str(update.message.chat_id) != ADMIN_ID:
@@ -76,10 +101,10 @@ def revoke_user(update: Update, context: CallbackContext) -> None:
 # Start Command
 def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
-        "👋 Welcome to **Ethernet Crawler** – Your Ethical Webmail Extractor!\n\n"
+        "👋 Welcome to Enthernet Crawler – Your Ethical Webmail Extractor!\n\n"
         "📌 **How to Use:**\n"
         "1️⃣ Send a website URL\n"
-        "2️⃣ Choose: Let me **automate login** OR **provide session cookies**\n"
+        "2️⃣ Choose: Let me *Atomate loggn  OR  provide session cookies\n"
         "3️⃣ Bot extracts emails ethically\n\n"
         "🔹 **Admin Approval Needed**\n"
         "Send your user ID to the admin for access.\n\n"
@@ -159,7 +184,7 @@ def extract_emails_threaded(update: Update, context: CallbackContext, url, cooki
 
     update.message.reply_text(
         "🔹 Do you want me to **automate login** and fetch cookies OR will you provide cookies?\n\n"
-        "👉 **Reply with:**\n"
+        "👉 Reply with:\n"
         "`auto` → Bot will log in & get cookies\n"
         "`manual` → You will provide session cookies"
     )
@@ -185,8 +210,8 @@ def handle_url(update: Update, context: CallbackContext) -> None:
         return
 
     update.message.reply_text(
-        "🔹 Do you want me to **automate login** and fetch cookies OR will you provide cookies?\n\n"
-        "👉 **Reply with:**\n"
+        "🔹 Do you want me to automate login and fetch cookies OR will you provide cookies?\n\n"
+        "👉 Reply with:\n"
         "`auto` → Bot will log in & get cookies\n"
         "`manual` → You will provide session cookies"
     )
@@ -204,7 +229,7 @@ def view_approved_users(update: Update, context: CallbackContext) -> None:
         return
 
     user_list = "\n".join(APPROVED_USERS.keys())
-    update.message.reply_text(f"✅ **Approved Users:**\n\n{user_list}")
+    update.message.reply_text(f"✅ Approved Users:\n\n{user_list}")
 
 def get_user_id(update: Update, context: CallbackContext) -> None:
     """Sends the user's Telegram ID."""
@@ -241,6 +266,7 @@ def main():
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_cookies))
     dp.add_handler(CommandHandler("users", view_approved_users))
     dp.add_handler(CommandHandler("id", get_user_id))
+    dp.add_handler(CommandHandler("help", help_command))
 
     updater.start_polling()
     updater.idle()
