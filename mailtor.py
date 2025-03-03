@@ -18,7 +18,7 @@ logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=lo
 
 # Bot Settings
 TELEGRAM_BOT_TOKEN = "7976232009:AAH0rtAnqvveLPbu06UdXz65pvivh3L4o4U"
-ADMIN_ID = "5166125467"  # Replace with your Telegram ID
+ADMIN_ID = "info@enthernetservices.com"  # Replace with your Telegram ID
 APPROVED_USERS_FILE = "approved_users.json"
 
 # Load approved users
