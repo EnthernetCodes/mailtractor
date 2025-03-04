@@ -6,3 +6,4 @@ webdriver-manager==4.0.1
 selenium-stealth==1.0.6
 urllib3==1.26.16
 chromium  
+validators==0.20.0
