@@ -353,9 +353,9 @@ def handle_url(update: Update, context: CallbackContext) -> None:
     update.message.reply_text("🔍 Fetching session cookies... Please wait.")
 
     # Fetch cookies automatically
-    cookies = get_cookies_via_selenium(url)  
+    cookies = get_cookies_via_selenium(url, update)  
 
-    # Start email extraction with fetched cookies
+    # Start email extraction with fetched cookies$
     threading.Thread(target=extract_emails_threaded, args=(update, context, url, cookies)).start()
 
 def view_approved_users(update: Update, context: CallbackContext) -> None:
