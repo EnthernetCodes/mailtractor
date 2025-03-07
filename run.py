@@ -1,6 +1,7 @@
 import re
+import time
 import requests
-import undetected_chromedriver as uc  # Import for Cloudflare bypass
+import undetected_chromedriver as uc  # Import for stealth Chrome
 from bs4 import BeautifulSoup
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
@@ -8,23 +9,32 @@ from urllib.parse import urljoin
 
 def get_cookies_from_browser(url):
     """
-    Uses undetected ChromeDriver to bypass Cloudflare and retrieve session cookies.
-    The browser is always visible so you can watch the bot work.
+    Opens a visible Chrome browser, navigates to the URL, and retrieves session cookies.
+    Cloudflare & login challenges are handled automatically.
     """
+    print(f"[INFO] Launching browser for {url}...")
+
+    # Ensure ChromeDriver is installed
     service = Service(ChromeDriverManager().install())
-    
-    # Start Chrome in normal mode (Visible, not headless)
-    driver = uc.Chrome(service=service, use_subprocess=True)
-    
+
+    # Explicitly disable headless mode (forces browser to be visible)
+    options = uc.ChromeOptions()
+    options.headless = False  # Ensures the browser is visible
+    options.add_argument("--start-maximized")  # Open browser in full-screen mode
+
+    driver = uc.Chrome(service=service, options=options, use_subprocess=True)
+
     try:
-        print(f"[INFO] Accessing {url}...")
         driver.get(url)
-        
-        # Wait for Cloudflare verification or login page
+        time.sleep(3)  # Small delay to allow the page to load properly
+
+        # Let Cloudflare run its checks if needed
         driver.implicitly_wait(10)
-        
+
         # Get cookies after verification
         cookies = driver.get_cookies()
+        print(f"[INFO] Cookies obtained: {cookies}")
+
         driver.quit()
         return cookies
     
