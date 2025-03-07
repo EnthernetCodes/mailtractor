@@ -1,23 +1,26 @@
 import re
 import requests
+import undetected_chromedriver as uc  # New import for Cloudflare bypass
 from bs4 import BeautifulSoup
-from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from urllib.parse import urljoin
 
-def get_cookies_from_browser(url, message="Solve the challenge in the browser and press Enter to continue..."):
-    """ Opens a browser for manual login or CAPTCHA solving, then retrieves session cookies. """
+def get_cookies_from_browser(url):
+    """ Uses undetected ChromeDriver to bypass Cloudflare and retrieve session cookies. """
     service = Service(ChromeDriverManager().install())
-    options = Options()
-    driver = webdriver.Chrome(service=service, options=options)
+    
+    # Use undetected ChromeDriver to evade bot detection
+    driver = uc.Chrome(service=service, use_subprocess=True)
     
     try:
-        print(f"[INFO] {message}")
+        print("[INFO] Solving Cloudflare challenge... Please wait.")
         driver.get(url)
-        input("[ACTION] Press Enter after solving the challenge...")  # Wait for user confirmation
         
+        # Wait until Cloudflare check is complete
+        driver.implicitly_wait(10)
+        
+        # Grab cookies after Cloudflare is bypassed
         cookies = driver.get_cookies()
         driver.quit()
         return cookies
@@ -27,16 +30,8 @@ def get_cookies_from_browser(url, message="Solve the challenge in the browser an
         driver.quit()
         return None
 
-def is_captcha_or_cloudflare(response_text):
-    """ Detects Cloudflare or CAPTCHA blocks based on page content. """
-    if "Checking your browser" in response_text or "Cloudflare" in response_text:
-        return "Cloudflare"
-    if "recaptcha" in response_text.lower() or "g-recaptcha" in response_text.lower():
-        return "reCAPTCHA"
-    return None
-
 def extract_emails(url, cookies=None):
-    """ Extracts emails from a webpage, handling authentication and CAPTCHA challenges. """
+    """ Extracts emails from a webpage while handling Cloudflare and login authentication. """
     session = requests.Session()
     
     if cookies:
@@ -57,18 +52,23 @@ def extract_emails(url, cookies=None):
             continue
         
         try:
+            # Skip non-http(s) links (e.g., "tel:", "ms-windows-store:")
+            if not current_url.startswith(("http://", "https://")):
+                print(f"[INFO] Skipping non-HTTP URL: {current_url}")
+                continue
+            
             response = session.get(current_url, headers=headers, timeout=10)
             response.raise_for_status()
             
-            # Detect Cloudflare or CAPTCHA blocks
-            block_type = is_captcha_or_cloudflare(response.text)
-            if block_type:
-                print(f"[WARNING] {block_type} detected at {current_url}. Manual intervention required.")
-                cookies = get_cookies_from_browser(current_url, f"{block_type} detected! Solve it in the browser.")
+            # Check for Cloudflare challenge
+            if "Checking your browser" in response.text or "cf-browser-verification" in response.text:
+                print(f"[WARNING] Cloudflare detected at {current_url}. Trying to bypass...")
+                cookies = get_cookies_from_browser(current_url)
+                
                 if cookies:
-                    return extract_emails(url, cookies)  # Retry extraction with new cookies
+                    return extract_emails(url, cookies)  # Retry with new cookies
                 else:
-                    print("[ERROR] Could not bypass the challenge. Exiting.")
+                    print("[ERROR] Could not bypass Cloudflare. Exiting.")
                     return []
             
             # Parse page content
@@ -79,14 +79,19 @@ def extract_emails(url, cookies=None):
             found_emails = re.findall(email_pattern, text_content)
             emails.update(found_emails)
             
-            # Extract links for further crawling
+            # Extract valid links for further crawling
             for link in soup.find_all("a", href=True):
                 absolute_url = urljoin(current_url, link["href"])
-                if absolute_url not in visited_urls:
+                if absolute_url not in visited_urls and absolute_url.startswith(("http://", "https://")):
                     urls_to_visit.append(absolute_url)
             
             visited_urls.add(current_url)
             
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 404:
+                print(f"[INFO] Skipping broken link (404 Not Found): {current_url}")
+            else:
+                print(f"[ERROR] HTTP error at {current_url}: {e}")
         except requests.exceptions.RequestException as e:
             print(f"[ERROR] Failed to fetch {current_url}: {e}")
     
@@ -104,7 +109,7 @@ else:
     print("[INFO] No emails found. Login may be required.")
     
     login_url = input("Enter login page URL: ")
-    cookies = get_cookies_from_browser(login_url, "Log in manually to fetch session cookies.")
+    cookies = get_cookies_from_browser(login_url)
 
     if cookies:
         emails = extract_emails(target_url, cookies)
