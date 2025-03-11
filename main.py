@@ -1,156 +1,149 @@
-import asyncio
+import time
 import csv
 import re
-import time
-import os
-import random
-import pandas as pd
-from urllib.parse import urljoin
-from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
 
-# Function to initialize Chrome browser
+# Ask user whether to open the browser or run in background
+show_browser = input("Do you want to open the browser and watch it work? (yes/no): ").strip().lower()
+
+# Configure browser options
+chrome_options = Options()
+if show_browser == "no":
+    chrome_options.add_argument("--headless")  # Run in background mode
+
+# Initialize browser
 def init_browser():
     service = Service(ChromeDriverManager().install())
-    options = Options()
-    options.headless = False  # Change to True if running in the background
-    options.add_argument("--start-maximized")  # Full-screen mode
-    return webdriver.Chrome(service=service, options=options)
+    chrome_options.add_argument("--start-maximized")  # Full-screen mode
+    return webdriver.Chrome(service=service, options=chrome_options)
 
-# Function to extract company profile links from search results (with pagination)
-async def get_company_links(browser, niche):
-    base_url = "https://www.europages.co.uk/en/search?cserpRedirect=1&q="
-    search_url = f"{base_url}{niche}"
-    browser.get(search_url)
-    time.sleep(random.randint(5, 10))  # Randomized delay for anti-blocking
-
-    company_links = set()
-
-    while True:
-        soup = BeautifulSoup(browser.page_source, "html.parser")
-        
-        # Extract company profile links
-        for link in soup.find_all("a", href=True):
-            href = link["href"]
-            if "/en/company/" in href:
-                company_links.add(urljoin("https://www.europages.co.uk", href))
-
-        print(f"[INFO] Found {len(company_links)} companies so far...")
-
-        # Check for "Next" button and navigate
-        try:
-            next_button = browser.find_element(By.CSS_SELECTOR, "a.pagination__next")
-            if next_button.is_enabled():
-                next_button.click()
-                time.sleep(random.randint(5, 10))  # Allow new page to load
-            else:
-                break  # No more pages, exit loop
-        except NoSuchElementException:
-            break  # No "Next" button found, exit
-
-    return list(company_links)
-
-# Function to extract company details
-async def get_company_details(browser, url):
+# Extracts company details
+def get_company_details(browser, url):
     browser.get(url)
-    time.sleep(random.randint(5, 10))  # Randomized delay for JS loading
+    time.sleep(5)  # Allow JavaScript to load
 
-    # Scroll down to load full page content
-    browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-    time.sleep(5)
+    # Extract Name
+    try:
+        name = browser.find_element(By.TAG_NAME, "h1").text.strip()
+    except:
+        name = "N/A"
 
-    soup = BeautifulSoup(browser.page_source, "html.parser")
-
-    # Extract company name
-    name = soup.find("h1")
-    name = name.text.strip() if name else "N/A"
-
-    # Extract email using regex
+    # Extract Email using Regex
+    page_text = browser.page_source
     email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-    found_emails = re.findall(email_pattern, soup.text)
+    found_emails = re.findall(email_pattern, page_text)
     email = found_emails[0] if found_emails else "N/A"
 
-    # Extract phone number
-    phone = "N/A"
-    phone_span = soup.find("span", class_="tel-number")
-    if phone_span:
-        phone = phone_span.text.strip()
+    # Extract Phone Number
+    try:
+        phone = browser.find_element(By.CLASS_NAME, "tel-number").text.strip()
+    except:
+        phone = "N/A"
 
-    # Extract location
-    location = "N/A"
-    location_div = soup.find("div", class_="company-card__info--address")
-    if location_div:
-        location = location_div.text.strip()
+    # Extract Location
+    try:
+        location = browser.find_element(By.CLASS_NAME, "company-card__info--address").text.strip()
+    except:
+        location = "N/A"
 
     return {"Name": name, "Email": email, "Phone": phone, "Location": location, "Profile URL": url}
 
-# Function to save results to a CSV file
-def save_to_csv(filename, data):
-    keys = data[0].keys() if data else ["Name", "Email", "Phone", "Location", "Profile URL"]
-    with open(filename, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=keys)
-        writer.writeheader()
-        writer.writerows(data)
-    print(f"[INFO] Data saved to '{filename}'.")
-
-# Function to load previously scraped data for auto-resume
-def load_previous_data(filename):
-    if os.path.exists(filename):
-        df = pd.read_csv(filename)
-        scraped_urls = set(df["Profile URL"])
-        print(f"[INFO] Resuming from last saved progress ({len(scraped_urls)} companies already scraped).")
-        return scraped_urls, df.to_dict(orient="records")
-    return set(), []
-
-# Main function to run the bot
-async def scrape_europages():
-    niche = input("Enter a niche (e.g., mining, engineering, healthcare): ").strip()
-    if not niche:
-        print("[ERROR] Niche cannot be empty!")
-        return
-
-    csv_filename = f"{niche}_contacts.csv"
+# Extract company profile links from paginated results
+def get_company_links(browser, niche, max_pages):
+    search_url = f"https://www.europages.co.uk/en/search?cserpRedirect=1&q={niche}"
+    browser.get(search_url)
     
-    # Load previously scraped data for resumption
-    scraped_urls, company_data = load_previous_data(csv_filename)
+    all_links = []
+    
+    for page in range(1, max_pages + 1):
+        try:
+            # Wait for elements to load
+            WebDriverWait(browser, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "a.company-result-name"))
+            )
 
-    print(f"[INFO] Searching for '{niche}' companies on Europages...")
+            # Extract links from the current page
+            links = browser.find_elements(By.CSS_SELECTOR, "a.company-result-name")
+            for link in links:
+                href = link.get_attribute("href")
+                if href and href not in all_links:
+                    all_links.append(href)
 
+            print(f"[INFO] Scraped page {page} - Total links collected: {len(all_links)}")
+
+            # Try to find and click the "Next" button for pagination
+            next_button = browser.find_elements(By.CSS_SELECTOR, "a[aria-label='Next page']")
+            if next_button and page < max_pages:
+                next_button[0].click()
+                time.sleep(3)  # Allow new page to load
+            else:
+                break  # No more pages
+
+        except Exception as e:
+            print(f"[ERROR] Issue on page {page}: {e}")
+            break
+    
+    return all_links
+
+# Save results to separate files based on email availability
+def save_results(niche, companies_with_email, companies_without_email):
+    # Sanitize the niche name for filenames
+    safe_niche = re.sub(r'[^\w\s-]', '', niche).replace(" ", "_").lower()
+
+    # Save companies WITH email
+    with open(f"{safe_niche}_companies_with_emails.csv", "w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=["Name", "Email", "Phone", "Location", "Profile URL"])
+        writer.writeheader()
+        writer.writerows(companies_with_email)
+
+    # Save companies WITHOUT email
+    with open(f"{safe_niche}_companies_without_emails.csv", "w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=["Name", "Email", "Phone", "Location", "Profile URL"])
+        writer.writeheader()
+        writer.writerows(companies_without_email)
+
+    print(f"[✅] Files saved as '{safe_niche}_companies_with_emails.csv' and '{safe_niche}_companies_without_emails.csv'")
+
+# Main execution
+if __name__ == "__main__":
     browser = init_browser()
     
-    try:
-        company_links = await get_company_links(browser, niche)
+    # Ask user for search query
+    niche = input("Enter the niche to search for: ").strip()
+    
+    # Ask user for number of pages to scrape
+    while True:
+        try:
+            max_pages = int(input("Enter the number of pages to scrape (e.g., 5): ").strip())
+            break
+        except ValueError:
+            print("[ERROR] Please enter a valid number.")
 
-        for index, link in enumerate(company_links):
-            if link in scraped_urls:
-                print(f"[INFO] Skipping already scraped ({index+1}/{len(company_links)}) → {link}")
-                continue  # Skip already scraped companies
+    # Scrape company links
+    company_links = get_company_links(browser, niche, max_pages)
 
-            print(f"[INFO] Scraping ({index+1}/{len(company_links)}) → {link}")
-            details = await get_company_details(browser, link)
-            company_data.append(details)
+    # Lists to store categorized data
+    companies_with_email = []
+    companies_without_email = []
 
-            # **Auto-save every 5 companies**
-            if len(company_data) % 5 == 0:
-                save_to_csv(csv_filename, company_data)
+    # Extract details for each company
+    for index, link in enumerate(company_links):
+        print(f"[INFO] Scraping company {index + 1}/{len(company_links)}: {link}")
+        details = get_company_details(browser, link)
 
-    except KeyboardInterrupt:
-        print("\n[WARNING] Script interrupted! Saving progress before exiting...")
-        save_to_csv(csv_filename, company_data)
+        if details["Email"] != "N/A":
+            companies_with_email.append(details)
+        else:
+            companies_without_email.append(details)
 
-    except Exception as e:
-        print(f"[ERROR] An error occurred: {e}")
+    # Save categorized results
+    save_results(niche, companies_with_email, companies_without_email)
 
-    finally:
-        save_to_csv(csv_filename, company_data)  # Final save
-        input("[ACTION] Press Enter to close the browser...")
-        browser.quit()
-
-# Run the script asynchronously
-if __name__ == "__main__":
-    asyncio.run(scrape_europages())
+    print(f"[✅] Scraping complete! Extracted {len(companies_with_email)} companies with emails and {len(companies_without_email)} without emails.")
+    browser.quit()
