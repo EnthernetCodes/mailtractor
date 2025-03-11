@@ -1,4 +1,4 @@
-import time
+	import time
 import csv
 import re
 from selenium import webdriver
@@ -9,7 +9,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
-# Ask user whether to open the browser or run in background
+# Ask user if they want to see the browser work
 show_browser = input("Do you want to open the browser and watch it work? (yes/no): ").strip().lower()
 
 # Configure browser options
@@ -20,10 +20,61 @@ if show_browser == "no":
 # Initialize browser
 def init_browser():
     service = Service(ChromeDriverManager().install())
-    chrome_options.add_argument("--start-maximized")  # Full-screen mode
+    chrome_options.add_argument("--start-maximized")  # Open in fullscreen
     return webdriver.Chrome(service=service, options=chrome_options)
 
-# Extracts company details
+# Scroll down to load dynamic content
+def scroll_to_load(browser):
+    last_height = browser.execute_script("return document.body.scrollHeight")
+    while True:
+        browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(3)  # Give time for content to load
+        new_height = browser.execute_script("return document.body.scrollHeight")
+        if new_height == last_height:
+            break
+        last_height = new_height
+
+# Extract company profile links
+def get_company_links(browser, niche, max_pages):
+    search_url = f"https://www.europages.co.uk/en/search?cserpRedirect=1&q={niche}"
+    browser.get(search_url)
+    
+    all_links = []
+
+    for page in range(1, max_pages + 1):
+        try:
+            # Wait up to 20 seconds for the elements to load
+            WebDriverWait(browser, 20).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "a.company-result-name"))
+            )
+
+            # Scroll to load all results
+            scroll_to_load(browser)
+
+            # Extract links from the page
+            links = browser.find_elements(By.CSS_SELECTOR, "a.company-result-name")
+            for link in links:
+                href = link.get_attribute("href")
+                if href and href not in all_links:
+                    all_links.append(href)
+
+            print(f"[INFO] Scraped page {page} - Total links collected: {len(all_links)}")
+
+            # Click "Next Page" button if available
+            next_buttons = browser.find_elements(By.CSS_SELECTOR, "a[aria-label='Next page']")
+            if next_buttons and page < max_pages:
+                next_buttons[0].click()
+                time.sleep(5)  # Wait for next page to load
+            else:
+                break  # No more pages
+
+        except Exception as e:
+            print(f"[ERROR] Issue on page {page}: {e}")
+            break
+    
+    return all_links
+
+# Extract details from company pages
 def get_company_details(browser, url):
     browser.get(url)
     time.sleep(5)  # Allow JavaScript to load
@@ -34,7 +85,7 @@ def get_company_details(browser, url):
     except:
         name = "N/A"
 
-    # Extract Email using Regex
+    # Extract Email
     page_text = browser.page_source
     email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
     found_emails = re.findall(email_pattern, page_text)
@@ -54,46 +105,8 @@ def get_company_details(browser, url):
 
     return {"Name": name, "Email": email, "Phone": phone, "Location": location, "Profile URL": url}
 
-# Extract company profile links from paginated results
-def get_company_links(browser, niche, max_pages):
-    search_url = f"https://www.europages.co.uk/en/search?cserpRedirect=1&q={niche}"
-    browser.get(search_url)
-    
-    all_links = []
-    
-    for page in range(1, max_pages + 1):
-        try:
-            # Wait for elements to load
-            WebDriverWait(browser, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "a.company-result-name"))
-            )
-
-            # Extract links from the current page
-            links = browser.find_elements(By.CSS_SELECTOR, "a.company-result-name")
-            for link in links:
-                href = link.get_attribute("href")
-                if href and href not in all_links:
-                    all_links.append(href)
-
-            print(f"[INFO] Scraped page {page} - Total links collected: {len(all_links)}")
-
-            # Try to find and click the "Next" button for pagination
-            next_button = browser.find_elements(By.CSS_SELECTOR, "a[aria-label='Next page']")
-            if next_button and page < max_pages:
-                next_button[0].click()
-                time.sleep(3)  # Allow new page to load
-            else:
-                break  # No more pages
-
-        except Exception as e:
-            print(f"[ERROR] Issue on page {page}: {e}")
-            break
-    
-    return all_links
-
-# Save results to separate files based on email availability
+# Save results to CSV files
 def save_results(niche, companies_with_email, companies_without_email):
-    # Sanitize the niche name for filenames
     safe_niche = re.sub(r'[^\w\s-]', '', niche).replace(" ", "_").lower()
 
     # Save companies WITH email
