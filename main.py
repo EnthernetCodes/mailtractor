@@ -1,4 +1,4 @@
-	import time
+import time
 import csv
 import re
 from selenium import webdriver
@@ -20,8 +20,21 @@ if show_browser == "no":
 # Initialize browser
 def init_browser():
     service = Service(ChromeDriverManager().install())
-    chrome_options.add_argument("--start-maximized")  # Open in fullscreen
+    chrome_options.add_argument("--start-maximized")  # Full-screen mode
     return webdriver.Chrome(service=service, options=chrome_options)
+
+# Accept cookies if popup appears
+def accept_cookies(browser):
+    try:
+        print("[INFO] Checking for cookie popup...")
+        cookie_button = WebDriverWait(browser, 5).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Accept') or contains(text(), 'accept')]"))
+        )
+        cookie_button.click()
+        print("[INFO] Cookie popup accepted.")
+        time.sleep(2)
+    except:
+        print("[INFO] No cookie popup found.")
 
 # Scroll down to load dynamic content
 def scroll_to_load(browser):
@@ -38,6 +51,9 @@ def scroll_to_load(browser):
 def get_company_links(browser, niche, max_pages):
     search_url = f"https://www.europages.co.uk/en/search?cserpRedirect=1&q={niche}"
     browser.get(search_url)
+
+    # Accept cookies at the start of scraping
+    accept_cookies(browser)
     
     all_links = []
 
@@ -78,6 +94,9 @@ def get_company_links(browser, niche, max_pages):
 def get_company_details(browser, url):
     browser.get(url)
     time.sleep(5)  # Allow JavaScript to load
+
+    # Accept cookies if they appear on company page
+    accept_cookies(browser)
 
     # Extract Name
     try:
