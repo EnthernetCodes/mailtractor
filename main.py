@@ -1,4 +1,5 @@
 import time
+import traceback
 import csv
 import re
 from selenium import webdriver
@@ -69,14 +70,14 @@ def get_company_links(browser, niche, max_pages):
         try:
             # Wait for elements to load
             WebDriverWait(browser, 20).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "a.company-result-name"))
+                EC.presence_of_element_located((By.CSS_SELECTOR, "a[data-test='company-name']"))
             )
 
             # Scroll to load all results
             scroll_to_load(browser)
 
             # Extract links from the page
-            links = browser.find_elements(By.CSS_SELECTOR, "a.company-result-name")
+            links = browser.find_elements(By.CSS_SELECTOR, "a[data-test='company-name']")
             for link in links:
                 href = link.get_attribute("href")
                 if href and href not in all_links:
@@ -100,6 +101,7 @@ def get_company_links(browser, niche, max_pages):
 
         except Exception as e:
             print(f"[ERROR] Issue on page {page}: {e}")
+            traceback.print_exc()
             break
     
     return all_links
