@@ -85,12 +85,18 @@ def get_company_links(browser, niche, max_pages):
             print(f"[INFO] Scraped page {page} - Total links collected: {len(all_links)}")
 
             # Click "Next Page" button if available
-            next_buttons = browser.find_elements(By.CSS_SELECTOR, "a[aria-label='Next page']")
-            if next_buttons and page < max_pages:
-                next_buttons[0].click()
-                time.sleep(5)  # Wait for next page to load
-            else:
-                break  # No more pages
+            # Click "Next Page" button if available
+            try:
+               next_button = WebDriverWait(browser, 10).until(
+              EC.element_to_be_clickable((By.CSS_SELECTOR, "a[aria-label='Next page']"))
+               )
+               browser.execute_script("arguments[0].scrollIntoView(true);", next_button)  # Scroll into view
+               next_button.click()
+               print(f"[INFO] Clicked 'Next Page' button on page {page}")
+               time.sleep(10)  # Wait for next page to load
+            except:
+               print(f"[INFO] No 'Next Page' button found on page {page}. Ending scraping.")
+               break
 
         except Exception as e:
             print(f"[ERROR] Issue on page {page}: {e}")
