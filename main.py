@@ -9,21 +9,29 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
-# Ask user if they want to see the browser work
+# ===== Auto-Update ChromeDriver =====
+def update_chromedriver():
+    print("[INFO] Updating ChromeDriver to match the latest browser version...")
+    driver_path = ChromeDriverManager().install()
+    print(f"[INFO] ChromeDriver updated: {driver_path}")
+    return driver_path
+
+# ===== Ask User if They Want to See the Browser =====
 show_browser = input("Do you want to open the browser and watch it work? (yes/no): ").strip().lower()
 
-# Configure browser options
+# ===== Configure Browser Options =====
 chrome_options = Options()
 if show_browser == "no":
     chrome_options.add_argument("--headless")  # Run in background mode
 
-# Initialize browser
 def init_browser():
-    service = Service(ChromeDriverManager().install())
+    service = Service(update_chromedriver())  # Auto-updated ChromeDriver
     chrome_options.add_argument("--start-maximized")  # Full-screen mode
-    return webdriver.Chrome(service=service, options=chrome_options)
+    browser = webdriver.Chrome(service=service, options=chrome_options)
+    browser.implicitly_wait(10)  # Wait up to 10 seconds for elements
+    return browser
 
-# Accept cookies if popup appears
+# ===== Accept Cookies if Popup Appears =====
 def accept_cookies(browser):
     try:
         print("[INFO] Checking for cookie popup...")
@@ -36,18 +44,18 @@ def accept_cookies(browser):
     except:
         print("[INFO] No cookie popup found.")
 
-# Scroll down to load dynamic content
+# ===== Scroll to Load Dynamic Content =====
 def scroll_to_load(browser):
     last_height = browser.execute_script("return document.body.scrollHeight")
     while True:
         browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(3)  # Give time for content to load
+        time.sleep(3)
         new_height = browser.execute_script("return document.body.scrollHeight")
         if new_height == last_height:
             break
         last_height = new_height
 
-# Extract company profile links
+# ===== Extract Company Links =====
 def get_company_links(browser, niche, max_pages):
     search_url = f"https://www.europages.co.uk/en/search?cserpRedirect=1&q={niche}"
     browser.get(search_url)
@@ -59,7 +67,7 @@ def get_company_links(browser, niche, max_pages):
 
     for page in range(1, max_pages + 1):
         try:
-            # Wait up to 20 seconds for the elements to load
+            # Wait for elements to load
             WebDriverWait(browser, 20).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "a.company-result-name"))
             )
@@ -90,7 +98,7 @@ def get_company_links(browser, niche, max_pages):
     
     return all_links
 
-# Extract details from company pages
+# ===== Extract Company Details =====
 def get_company_details(browser, url):
     browser.get(url)
     time.sleep(5)  # Allow JavaScript to load
@@ -124,7 +132,7 @@ def get_company_details(browser, url):
 
     return {"Name": name, "Email": email, "Phone": phone, "Location": location, "Profile URL": url}
 
-# Save results to CSV files
+# ===== Save Results to CSV Files =====
 def save_results(niche, companies_with_email, companies_without_email):
     safe_niche = re.sub(r'[^\w\s-]', '', niche).replace(" ", "_").lower()
 
@@ -142,7 +150,7 @@ def save_results(niche, companies_with_email, companies_without_email):
 
     print(f"[✅] Files saved as '{safe_niche}_companies_with_emails.csv' and '{safe_niche}_companies_without_emails.csv'")
 
-# Main execution
+# ===== Main Execution =====
 if __name__ == "__main__":
     browser = init_browser()
     
