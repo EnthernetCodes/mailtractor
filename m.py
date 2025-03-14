@@ -75,12 +75,12 @@ def collect_company_links(browser, niche, max_pages):
         try:
             # Wait for company links to load
             WebDriverWait(browser, 20).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "div.flex.flex-col.gap-1.flex-1 a.name"))
+                EC.presence_of_element_located((By.CSS_SELECTOR, "a[data-test='company-name']"))
             )
             scroll_to_load(browser)
 
             # Extract company links
-            links = browser.find_elements(By.CSS_SELECTOR, "div.flex.flex-col.gap-1.flex-1 a.name")
+            links = browser.find_elements(By.CSS_SELECTOR, "a[data-test='company-name']")
             for link in links:
                 href = link.get_attribute("href")
                 if href:
