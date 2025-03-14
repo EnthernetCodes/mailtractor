@@ -68,7 +68,6 @@ def collect_company_links(browser, niche, max_pages):
     browser.get(search_url)
 
     accept_cookies(browser)
-
     all_links = []
 
     for page in range(1, max_pages + 1):
@@ -81,25 +80,31 @@ def collect_company_links(browser, niche, max_pages):
 
             # Extract company links
             links = browser.find_elements(By.CSS_SELECTOR, "a[data-test='company-name']")
+            new_links = 0
+
             for link in links:
                 href = link.get_attribute("href")
                 if href:
                     full_link = f"https://www.europages.co.uk{href}"
                     if full_link not in all_links:
                         all_links.append(full_link)
+                        new_links += 1
 
-            print(f"[INFO] Scraped page {page} - Total links collected so far: {len(all_links)}")
+            print(f"[INFO] Scraped page {page} - Total links collected so far: {len(all_links)} (New: {new_links})")
 
             # Click "Next" button to navigate to the next page
+            scroll_to_load(browser)  # Scroll again to ensure "Next" button is visible
             try:
                 next_button = WebDriverWait(browser, 10).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, "a[data-test='pagination-next']"))
                 )
+                browser.execute_script("arguments[0].scrollIntoView(true);", next_button)  # Ensure visibility
                 next_button.click()
                 print(f"[INFO] Clicked 'Next Page' button on page {page}")
                 time.sleep(10)  # Wait for next page to load
-            except:
+            except Exception as e:
                 print(f"[INFO] No 'Next Page' button found on page {page}. Ending link collection.")
+                print(f"[DEBUG] Exception: {e}")
                 break
 
         except Exception as e:
@@ -109,7 +114,6 @@ def collect_company_links(browser, niche, max_pages):
 
     print(f"[✅] Total company links collected: {len(all_links)}")
     return all_links
-
 
 def scrape_company_details(url, retries=3):
     """ Visit each company page and extract details: Name, Email, Phone, Location with retries """
