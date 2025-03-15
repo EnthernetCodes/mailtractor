@@ -75,10 +75,16 @@ def collect_company_links(browser, niche, max_pages):
 
             for link in links:
                 href = link.get_attribute("href")
-                if href:
-                    full_link = f"https://www.europages.co.uk{href}"
-                    if full_link not in all_links:
-                        all_links.append(full_link)
+
+                # Fix: Avoid double base URL
+               if href.startswith("http"):
+                  full_link = href
+               else:
+                  full_link = f"https://www.europages.co.uk{href}"
+
+               # Add the link if it's not already collected
+               if full_link not in all_links:
+                  all_links.append(full_link)
 
             print(f"[INFO] Scraped page {page} - Total links collected: {len(all_links)}")
 
