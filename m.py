@@ -5,41 +5,35 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 import time
 import csv
 import re
 import traceback
 
-
+# ======= ChromeDriver Setup (Only Once) =======
 def update_chromedriver():
-    """ Ensures the latest ChromeDriver is used """
     print("[INFO] Updating ChromeDriver...")
-    driver_path = ChromeDriverManager().install()
-    print(f"[INFO] ChromeDriver updated: {driver_path}")
-    return driver_path
+    return ChromeDriverManager().install()
 
+CHROME_DRIVER_PATH = update_chromedriver()
 
-# Configure browser options
-show_browser = input("Do you want to open the browser and watch it work? (yes/no): ").strip().lower()
-chrome_options = Options()
-if show_browser == "no":
-    chrome_options.add_argument("--headless")  # Headless mode for background execution
-
-
+# ======= Browser Initialization (Single Instance) =======
 def init_browser():
-    """ Initialize the Selenium browser """
-    service = Service(update_chromedriver())
+    service = Service(CHROME_DRIVER_PATH)
+    chrome_options = Options()
+    show_browser = input("Do you want to open the browser and watch it work? (yes/no): ").strip().lower()
+    if show_browser == "no":
+        chrome_options.add_argument("--headless")  # Headless mode for background execution
+    
     browser = webdriver.Chrome(service=service, options=chrome_options)
-    browser.implicitly_wait(10)  # Implicit wait for element loading
+    browser.implicitly_wait(10)
+    print("[INFO] Browser initialized.")
     return browser
 
-
+# ======= Cookie Handling =======
 def accept_cookies(browser):
-    """ Accept cookies if the popup appears """
     try:
-        print("[INFO] Checking for cookie popup...")
         cookie_button = WebDriverWait(browser, 5).until(
             EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Accept') or contains(text(), 'accept')]"))
         )
@@ -49,38 +43,35 @@ def accept_cookies(browser):
     except:
         print("[INFO] No cookie popup found.")
 
-
+# ======= Scroll to Bottom =======
 def scroll_to_load(browser):
-    """ Scroll to the bottom to load all dynamic content """
     last_height = browser.execute_script("return document.body.scrollHeight")
     while True:
         browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(3)  # Allow time for dynamic content to load
+        time.sleep(3)
         new_height = browser.execute_script("return document.body.scrollHeight")
         if new_height == last_height:
             break
         last_height = new_height
 
-
+# ======= Collect Company Links =======
 def collect_company_links(browser, niche, max_pages):
     """ Collect all company profile links from search results first """
     search_url = f"https://www.europages.co.uk/en/search?cserpRedirect=1&q={niche}"
     browser.get(search_url)
-
     accept_cookies(browser)
-    all_links = []
 
+    all_links = []
     for page in range(1, max_pages + 1):
         try:
-            # Wait for company links to load
-            WebDriverWait(browser, 20).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "a[data-test='company-name']"))
-            )
+            # Scroll and load all content
             scroll_to_load(browser)
 
             # Extract company links
             links = browser.find_elements(By.CSS_SELECTOR, "a[data-test='company-name']")
-            new_links = 0
+            if not links:
+                print(f"[INFO] No company links found on page {page}. Ending link collection.")
+                break
 
             for link in links:
                 href = link.get_attribute("href")
@@ -88,23 +79,21 @@ def collect_company_links(browser, niche, max_pages):
                     full_link = f"https://www.europages.co.uk{href}"
                     if full_link not in all_links:
                         all_links.append(full_link)
-                        new_links += 1
 
-            print(f"[INFO] Scraped page {page} - Total links collected so far: {len(all_links)} (New: {new_links})")
+            print(f"[INFO] Scraped page {page} - Total links collected: {len(all_links)}")
 
-            # Click "Next" button to navigate to the next page
-            scroll_to_load(browser)  # Scroll again to ensure "Next" button is visible
+            # Click "Next" button if available
+            scroll_to_load(browser)
             try:
                 next_button = WebDriverWait(browser, 10).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, "a[data-test='pagination-next']"))
                 )
-                browser.execute_script("arguments[0].scrollIntoView(true);", next_button)  # Ensure visibility
+                browser.execute_script("arguments[0].scrollIntoView(true);", next_button)
                 next_button.click()
                 print(f"[INFO] Clicked 'Next Page' button on page {page}")
-                time.sleep(10)  # Wait for next page to load
-            except Exception as e:
+                time.sleep(10)
+            except:
                 print(f"[INFO] No 'Next Page' button found on page {page}. Ending link collection.")
-                print(f"[DEBUG] Exception: {e}")
                 break
 
         except Exception as e:
@@ -115,17 +104,17 @@ def collect_company_links(browser, niche, max_pages):
     print(f"[✅] Total company links collected: {len(all_links)}")
     return all_links
 
-def scrape_company_details(url, retries=3):
-    """ Visit each company page and extract details: Name, Email, Phone, Location with retries """
+# ======= Scrape Company Details =======
+def scrape_company_details(browser, url, retries=3):
+    """ Scrape details from a company page using a single browser instance """
     attempt = 0
     while attempt < retries:
         try:
-            browser = init_browser()
             browser.get(url)
-            time.sleep(5)
-
+            time.sleep(3)
             accept_cookies(browser)
 
+            # Extract Company Details
             try:
                 name = browser.find_element(By.TAG_NAME, "h1").text.strip()
             except:
@@ -147,21 +136,18 @@ def scrape_company_details(url, retries=3):
             except:
                 location = "N/A"
 
-            browser.quit()
             return {"Name": name, "Email": email, "Phone": phone, "Location": location, "Profile URL": url}
 
         except Exception as e:
             print(f"[ERROR] Failed to scrape {url} (Attempt {attempt + 1}/{retries}): {e}")
             traceback.print_exc()
             attempt += 1
-            browser.quit()
 
     print(f"[ERROR] Skipped {url} after {retries} failed attempts.")
     return None
 
-
+# ======= Save Results =======
 def save_results(niche, data):
-    """ Save scraped results into a CSV file """
     safe_niche = re.sub(r'[^\w\s-]', '', niche).replace(" ", "_").lower()
     with open(f"{safe_niche}_companies.csv", "w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=["Name", "Email", "Phone", "Location", "Profile URL"])
@@ -169,9 +155,9 @@ def save_results(niche, data):
         writer.writerows(data)
     print(f"[✅] Results saved as '{safe_niche}_companies.csv'")
 
-
+# ======= Main =======
 if __name__ == "__main__":
-    main_browser = init_browser()
+    browser = init_browser()
 
     niche = input("Enter the niche to search for: ").strip()
 
@@ -182,24 +168,22 @@ if __name__ == "__main__":
         except ValueError:
             print("[ERROR] Please enter a valid number.")
 
-    # Phase 1: Collect all company links first
+    # Phase 1: Collect Links
     print("[INFO] Collecting company links...")
-    company_links = collect_company_links(main_browser, niche, max_pages)
-    main_browser.quit()
+    company_links = collect_company_links(browser, niche, max_pages)
 
-    # Phase 2: Scrape company details from collected links in parallel with a progress bar
+    # Phase 2: Scrape Details with Single Browser Instance
     print("[INFO] Scraping company details...")
     scraped_data = []
-    
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = [executor.submit(scrape_company_details, link) for link in company_links]
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Scraping Progress", unit="company"):
-            result = future.result()
-            if result:
-                scraped_data.append(result)
 
-    # Phase 3: Save results
+    for link in tqdm(company_links, desc="Scraping Progress", unit="company"):
+        result = scrape_company_details(browser, link)
+        if result:
+            scraped_data.append(result)
+
+    # Phase 3: Save Results
     print("[INFO] Saving results...")
     save_results(niche, scraped_data)
 
+    browser.quit()
     print(f"[✅] Scraping complete! Total Companies Scraped: {len(scraped_data)}")
