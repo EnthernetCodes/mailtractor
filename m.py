@@ -64,7 +64,7 @@ def scroll_to_load(browser):
 
 # ======= Collect All Page URLs =======
 def collect_all_page_urls(browser, niche, max_pages):
-    """ Collect all page URLs based on user input and stop if no 'Next' button is found """
+    """ Collect all page URLs up to max_pages or until no 'Next' button is found """
     search_url = f"https://www.europages.co.uk/en/search?cserpRedirect=1&q={niche}"
     browser.get(search_url)
     accept_cookies(browser)
@@ -75,19 +75,39 @@ def collect_all_page_urls(browser, niche, max_pages):
         try:
             scroll_to_load(browser)
 
-            # Find the "Next" button and click it to get the next page URL
-            next_button = WebDriverWait(browser, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "a[data-test='pagination-next']"))
-            )
-            next_page_url = next_button.get_attribute("href")
-            page_urls.append(next_page_url)
+            # Check for "Next" button first
+            next_buttons = browser.find_elements(By.CSS_SELECTOR, "a[data-test='pagination-next']")
+            if next_buttons:
+                next_page_url = next_buttons[0].get_attribute("href")
+                page_urls.append(next_page_url)
+                print(f"[INFO] Collected page {page + 1} URL: {next_page_url}")
 
-            print(f"[INFO] Collected page {page + 1} URL: {next_page_url}")
+                # Click "Next" to navigate
+                browser.execute_script("arguments[0].scrollIntoView(true);", next_buttons[0])
+                next_buttons[0].click()
+                time.sleep(5)
+                continue
 
-            # Click "Next" to navigate
-            browser.execute_script("arguments[0].scrollIntoView(true);", next_button)
-            next_button.click()
-            time.sleep(5)
+            # If "Next" button isn't found, try clicking page numbers directly
+            page_numbers = browser.find_elements(By.CSS_SELECTOR, "a.button.number")
+            found_next_page = False
+
+            for p in page_numbers:
+                if p.text == str(page + 1):
+                    next_page_url = p.get_attribute("href")
+                    page_urls.append(next_page_url)
+                    print(f"[INFO] Collected page {page + 1} URL: {next_page_url}")
+
+                    # Click page number to navigate
+                    browser.execute_script("arguments[0].scrollIntoView(true);", p)
+                    p.click()
+                    time.sleep(5)
+                    found_next_page = True
+                    break
+
+            if not found_next_page:
+                print(f"[INFO] No next page found after page {page}. Stopping.")
+                break
 
         except Exception:
             print(f"[INFO] No 'Next Page' button found after page {page}. Stopping.")
@@ -97,7 +117,7 @@ def collect_all_page_urls(browser, niche, max_pages):
     return page_urls
 
 
-# ======= Phase 1: Collect Company Links =======
+# ======= Collect Company Links =======
 def collect_company_links(browser, page_urls):
     """ Collect company profile links across all pages """
     all_links = []
@@ -128,59 +148,6 @@ def collect_company_links(browser, page_urls):
     return all_links
 
 
-# ======= Phase 2: Scrape Company Details =======
-def scrape_company_details(browser, url, retries=3):
-    """ Scrape details from a company page using a single browser instance """
-    attempt = 0
-    while attempt < retries:
-        try:
-            browser.get(url)
-            time.sleep(3)
-            accept_cookies(browser)
-
-            # Extract Company Details
-            try:
-                name = browser.find_element(By.TAG_NAME, "h1").text.strip()
-            except:
-                name = "N/A"
-
-            # Extract email using regex from page source
-            page_text = browser.page_source
-            email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-            found_emails = re.findall(email_pattern, page_text)
-            email = found_emails[0] if found_emails else "N/A"
-
-            try:
-                phone = browser.find_element(By.CLASS_NAME, "tel-number").text.strip()
-            except:
-                phone = "N/A"
-
-            try:
-                location = browser.find_element(By.CLASS_NAME, "company-card__info--address").text.strip()
-            except:
-                location = "N/A"
-
-            return {"Name": name, "Email": email, "Phone": phone, "Location": location, "Profile URL": url}
-
-        except Exception as e:
-            print(f"[ERROR] Failed to scrape {url} (Attempt {attempt + 1}/{retries}): {e}")
-            traceback.print_exc()
-            attempt += 1
-
-    print(f"[ERROR] Skipped {url} after {retries} failed attempts.")
-    return None
-
-
-# ======= Save Results =======
-def save_results(niche, data):
-    safe_niche = re.sub(r'[^\w\s-]', '', niche).replace(" ", "_").lower()
-    with open(f"{safe_niche}_companies.csv", "w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=["Name", "Email", "Phone", "Location", "Profile URL"])
-        writer.writeheader()
-        writer.writerows(data)
-    print(f"[✅] Results saved as '{safe_niche}_companies.csv'")
-
-
 # ======= Main =======
 if __name__ == "__main__":
     browser = init_browser()
@@ -194,15 +161,5 @@ if __name__ == "__main__":
     # Phase 2: Collect Links
     company_links = collect_company_links(browser, page_urls)
 
-    # Phase 3: Scrape Details
-    scraped_data = []
-    for link in tqdm(company_links, desc="Scraping Details", unit="company"):
-        result = scrape_company_details(browser, link)
-        if result:
-            scraped_data.append(result)
-
-    # Save Results
-    save_results(niche, scraped_data)
-
     browser.quit()
-    print(f"[✅] Scraping complete! Total Companies Scraped: {len(scraped_data)}")
+    print(f"[✅] Scraping complete! Total Companies Scraped: {len(company_links)}")
