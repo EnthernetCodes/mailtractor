@@ -75,7 +75,7 @@ def collect_all_page_urls(browser, niche, max_pages):
         try:
             scroll_to_load(browser)
 
-            # Check for "Next" button first
+            # 1. Try to find the "Next" button
             next_buttons = browser.find_elements(By.CSS_SELECTOR, "a[data-test='pagination-next']")
             if next_buttons:
                 next_page_url = next_buttons[0].get_attribute("href")
@@ -88,12 +88,12 @@ def collect_all_page_urls(browser, niche, max_pages):
                 time.sleep(5)
                 continue
 
-            # If "Next" button isn't found, try clicking page numbers directly
+            # 2. If "Next" button is missing, click numbered pages
             page_numbers = browser.find_elements(By.CSS_SELECTOR, "a.button.number")
             found_next_page = False
 
             for p in page_numbers:
-                if p.text == str(page + 1):
+                if p.text == str(page + 1):  # Check for next page number
                     next_page_url = p.get_attribute("href")
                     page_urls.append(next_page_url)
                     print(f"[INFO] Collected page {page + 1} URL: {next_page_url}")
