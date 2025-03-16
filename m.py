@@ -148,46 +148,6 @@ def collect_company_links(browser, page_urls):
     return all_links
 
 
-# ======= Scrape Company Details =======
-def scrape_company_details(browser, url):
-    """ Scrape details from a company page """
-    browser.get(url)
-    time.sleep(3)
-    scroll_to_load(browser)
-
-    # Extract Company Details
-    try:
-        name = browser.find_element(By.TAG_NAME, "h1").text.strip()
-    except:
-        name = "N/A"
-
-    page_text = browser.page_source
-    email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-    found_emails = re.findall(email_pattern, page_text)
-    email = found_emails[0] if found_emails else "N/A"
-
-    try:
-        phone = browser.find_element(By.CLASS_NAME, "tel-number").text.strip()
-    except:
-        phone = "N/A"
-
-    try:
-        location = browser.find_element(By.CLASS_NAME, "company-card__info--address").text.strip()
-    except:
-        location = "N/A"
-
-    return {"Name": name, "Email": email, "Phone": phone, "Location": location, "Profile URL": url}
-
-
-# ======= Export to CSV =======
-def export_to_csv(data, filename="scraped_companies.csv"):
-    with open(filename, "w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=["Name", "Email", "Phone", "Location", "Profile URL"])
-        writer.writeheader()
-        writer.writerows(data)
-    print(f"[✅] Data exported to '{filename}'")
-
-
 # ======= Main =======
 if __name__ == "__main__":
     browser = init_browser()
@@ -195,16 +155,11 @@ if __name__ == "__main__":
     niche = input("Enter the niche to search for: ").strip()
     max_pages = int(input("Enter the number of pages to scrape: ").strip())
 
+    # Phase 1: Collect Page URLs
     page_urls = collect_all_page_urls(browser, niche, max_pages)
+
+    # Phase 2: Collect Links
     company_links = collect_company_links(browser, page_urls)
 
-    # Scrape details and export
-    scraped_data = []
-    for link in tqdm(company_links, desc="Scraping Details", unit="company"):
-        result = scrape_company_details(browser, link)
-        if result:
-            scraped_data.append(result)
-
-    export_to_csv(scraped_data)
     browser.quit()
-    print("[✅] Scraping Complete!")
+    print(f"[✅] Scraping complete! Total Companies Scraped: {len(company_links)}")
