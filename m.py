@@ -2,94 +2,193 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
+from tqdm import tqdm
 import time
+import csv
+import re
+import traceback
 
-def init_driver():
-    """Initialize the Chrome driver."""
-    options = webdriver.ChromeOptions()
-    options.add_argument("--headless")  # Run headless if you don't want the browser window to appear
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    driver = webdriver.Chrome(options=options)
-    driver.maximize_window()
-    return driver
+# ======= Setup ChromeDriver Once =======
+def update_chromedriver():
+    print("[INFO] Updating ChromeDriver...")
+    return ChromeDriverManager().install()
 
-def scrape_links(driver, search_url, pages_to_scrape):
-    """Collect company links across multiple pages."""
-    driver.get(search_url)
-    company_links = []
+CHROME_DRIVER_PATH = update_chromedriver()
+
+# ======= Browser Initialization (Single Instance) =======
+def init_browser():
+    service = Service(CHROME_DRIVER_PATH)
+    chrome_options = Options()
     
-    for page in range(pages_to_scrape):
-        print(f"[INFO] Scraping page {page + 1}...")
+    show_browser = input("Do you want to open the browser and watch it work? (yes/no): ").strip().lower()
+    if show_browser == "no":
+        chrome_options.add_argument("--headless")  # Run in headless mode
 
-        # Wait for links to load
-        try:
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "a.company-link"))  # Adjust selector
-            )
-        except Exception as e:
-            print(f"[WARNING] No links found on page {page + 1}. Error: {e}")
-            break
+    browser = webdriver.Chrome(service=service, options=chrome_options)
+    browser.implicitly_wait(10)
+    print("[INFO] Browser initialized.")
+    return browser
 
-        # Collect links on the current page
-        links = driver.find_elements(By.CSS_SELECTOR, "a.company-link")  # Adjust selector
-        for link in links:
-            company_links.append(link.get_attribute("href"))
-
-        print(f"[INFO] Links collected so far: {len(company_links)}")
-
-        # Try to click the "Next Page" button, if available
-        try:
-            next_button = driver.find_element(By.CSS_SELECTOR, "a.next-page")  # Adjust selector
-            next_button.click()
-            WebDriverWait(driver, 10).until(EC.staleness_of(next_button))  # Wait for page refresh
-        except:
-            print("[INFO] No 'Next Page' button found. Ending link collection.")
-            break
-
-        time.sleep(2)  # Avoid rate limiting
-
-    print(f"[✅] Total company links collected: {len(company_links)}")
-    return company_links
-
-def scrape_company_details(driver, links):
-    """Visit each company link and scrape details."""
-    for i, link in enumerate(links):
-        driver.get(link)
-        print(f"[INFO] Scraping company {i + 1}/{len(links)}: {link}")
-
-        # Example: Extract company name (adjust selector)
-        try:
-            company_name = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "h1.company-name"))  # Adjust selector
-            ).text
-            print(f"    Company Name: {company_name}")
-        except:
-            print("    [WARNING] Company name not found.")
-
-        time.sleep(2)  # Avoid triggering rate limiting
-    
-    print("[✅] Company details scraping completed.")
-
-def main():
-    search_url = input("Enter the search URL: ").strip()
-    pages_to_scrape = int(input("Enter the number of pages to scrape: "))
-
-    driver = init_driver()
-
+# ======= Accept Cookies =======
+def accept_cookies(browser):
     try:
-        # Step 1: Gather all links
-        company_links = scrape_links(driver, search_url, pages_to_scrape)
+        cookie_button = WebDriverWait(browser, 5).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Accept') or contains(text(), 'accept')]"))
+        )
+        cookie_button.click()
+        print("[INFO] Cookie popup accepted.")
+        time.sleep(2)
+    except:
+        print("[INFO] No cookie popup found.")
 
-        # Step 2: Scrape details after collecting all links
-        if company_links:
-            scrape_company_details(driver, company_links)
-        else:
-            print("[INFO] No links found to scrape.")
+# ======= Scroll to Bottom =======
+def scroll_to_load(browser):
+    """ Scroll down to load dynamic content """
+    last_height = browser.execute_script("return document.body.scrollHeight")
+    while True:
+        browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(3)
+        new_height = browser.execute_script("return document.body.scrollHeight")
+        if new_height == last_height:
+            break
+        last_height = new_height
 
-    finally:
-        driver.quit()
-        print("[INFO] Browser closed.")
+# ======= Phase 1: Collect Company Links =======
+def collect_company_links(browser, niche, max_pages):
+    """ Collect all company profile links across multiple pages """
+    search_url = f"https://www.europages.co.uk/en/search?cserpRedirect=1&q={niche}"
+    browser.get(search_url)
+    accept_cookies(browser)
 
+    all_links = []
+
+    for page in range(1, max_pages + 1):
+        try:
+            scroll_to_load(browser)
+
+            # Extract company links
+            links = browser.find_elements(By.CSS_SELECTOR, "a[data-test='company-name']")
+            if not links:
+                print(f"[INFO] No company links found on page {page}. Ending link collection.")
+                break
+
+            for link in links:
+                href = link.get_attribute("href")
+                if href.startswith("http"):
+                    full_link = href
+                else:
+                    full_link = f"https://www.europages.co.uk{href}"
+
+                if full_link not in all_links:
+                    all_links.append(full_link)
+
+            print(f"[INFO] Scraped page {page} - Total links collected: {len(all_links)}")
+
+            # Click "Next" button if available
+            scroll_to_load(browser)
+            try:
+                next_button = WebDriverWait(browser, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "a[data-test='pagination-next']"))
+                )
+                browser.execute_script("arguments[0].scrollIntoView(true);", next_button)
+                next_button.click()
+                print(f"[INFO] Clicked 'Next Page' button on page {page}")
+                time.sleep(10)
+            except:
+                print(f"[INFO] No 'Next Page' button found on page {page}. Ending link collection.")
+                break
+
+        except Exception as e:
+            print(f"[ERROR] Issue on page {page}: {e}")
+            traceback.print_exc()
+            break
+
+    print(f"[✅] Total company links collected: {len(all_links)}")
+    return all_links
+
+# ======= Phase 2: Scrape Company Details =======
+def scrape_company_details(browser, url, retries=3):
+    """ Scrape details from a company page using a single browser instance """
+    attempt = 0
+    while attempt < retries:
+        try:
+            browser.get(url)
+            time.sleep(3)
+            accept_cookies(browser)
+
+            # Extract Company Details
+            try:
+                name = browser.find_element(By.TAG_NAME, "h1").text.strip()
+            except:
+                name = "N/A"
+
+            # Extract email using regex from page source
+            page_text = browser.page_source
+            email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+            found_emails = re.findall(email_pattern, page_text)
+            email = found_emails[0] if found_emails else "N/A"
+
+            try:
+                phone = browser.find_element(By.CLASS_NAME, "tel-number").text.strip()
+            except:
+                phone = "N/A"
+
+            try:
+                location = browser.find_element(By.CLASS_NAME, "company-card__info--address").text.strip()
+            except:
+                location = "N/A"
+
+            return {"Name": name, "Email": email, "Phone": phone, "Location": location, "Profile URL": url}
+
+        except Exception as e:
+            print(f"[ERROR] Failed to scrape {url} (Attempt {attempt + 1}/{retries}): {e}")
+            traceback.print_exc()
+            attempt += 1
+
+    print(f"[ERROR] Skipped {url} after {retries} failed attempts.")
+    return None
+
+# ======= Save Results =======
+def save_results(niche, data):
+    safe_niche = re.sub(r'[^\w\s-]', '', niche).replace(" ", "_").lower()
+    with open(f"{safe_niche}_companies.csv", "w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=["Name", "Email", "Phone", "Location", "Profile URL"])
+        writer.writeheader()
+        writer.writerows(data)
+    print(f"[✅] Results saved as '{safe_niche}_companies.csv'")
+
+# ======= Main =======
 if __name__ == "__main__":
-    main()
+    browser = init_browser()
+
+    niche = input("Enter the niche to search for: ").strip()
+
+    while True:
+        try:
+            max_pages = int(input("Enter the number of pages to scrape (e.g., 5): ").strip())
+            break
+        except ValueError:
+            print("[ERROR] Please enter a valid number.")
+
+    # Phase 1: Collect Links
+    print("[INFO] Collecting company links...")
+    company_links = collect_company_links(browser, niche, max_pages)
+
+    # Phase 2: Scrape Details with Single Browser Instance
+    print("[INFO] Scraping company details...")
+    scraped_data = []
+
+    for link in tqdm(company_links, desc="Scraping Progress", unit="company"):
+        result = scrape_company_details(browser, link)
+        if result:
+            scraped_data.append(result)
+
+    # Phase 3: Save Results
+    print("[INFO] Saving results...")
+    save_results(niche, scraped_data)
+
+    browser.quit()
+    print(f"[✅] Scraping complete! Total Companies Scraped: {len(scraped_data)}")
