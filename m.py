@@ -51,16 +51,28 @@ def accept_cookies(browser):
 
 # ======= Scroll to Load Dynamic Content =======
 def scroll_to_load(browser):
-    """ Scroll down to load dynamic content """
+    """ Enhanced scrolling to load all dynamic content: slow initial scroll, then fast up and down. """
     last_height = browser.execute_script("return document.body.scrollHeight")
+
+    # Initial slow scroll to load most content
+    print("[INFO] Initial slow scroll to load content...")
     while True:
-        browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(3)
+        browser.execute_script("window.scrollBy(0, 200);")  # Small steps down
+        time.sleep(0.8)
         new_height = browser.execute_script("return document.body.scrollHeight")
         if new_height == last_height:
             break
         last_height = new_height
 
+    # Fast scroll up and down to catch remaining lazy-loaded content
+    print("[INFO] Fast up-down scroll to ensure all content is loaded...")
+    for _ in range(3):
+        browser.execute_script("window.scrollTo(0, 0);")  # Scroll to top
+        time.sleep(0.5)
+        browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")  # Scroll back down fast
+        time.sleep(0.5)
+
+    print("[✅] Enhanced scrolling complete. All content should be loaded.")
 
 # ======= Collect All Page URLs =======
 def collect_all_page_urls(browser, niche, max_pages):
