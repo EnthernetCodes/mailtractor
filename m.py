@@ -58,7 +58,7 @@ def scroll_to_load(browser):
     print("[INFO] Initial slow scroll to load content...")
     while True:
         browser.execute_script("window.scrollBy(0, 200);")  # Small steps down
-        time.sleep(0.8)
+        time.sleep(1)
         new_height = browser.execute_script("return document.body.scrollHeight")
         if new_height == last_height:
             break
@@ -68,9 +68,9 @@ def scroll_to_load(browser):
     print("[INFO] Fast up-down scroll to ensure all content is loaded...")
     for _ in range(3):
         browser.execute_script("window.scrollTo(0, 0);")  # Scroll to top
-        time.sleep(0.5)
+        time.sleep(0.9)
         browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")  # Scroll back down fast
-        time.sleep(0.5)
+        time.sleep(0.9)
 
     print("[✅] Enhanced scrolling complete. All content should be loaded.")
 
@@ -161,35 +161,48 @@ def collect_company_links(browser, page_urls):
 
 
 # ======= Scrape Company Details =======
-def scrape_company_details(browser, url):
-    """ Scrape details from a company page """
-    browser.get(url)
-    time.sleep(3)
-    scroll_to_load(browser)
 
-    # Extract Company Details
-    try:
-        name = browser.find_element(By.TAG_NAME, "h1").text.strip()
-    except:
-        name = "N/A"
+def scrape_company_details(browser, url, retries=3):
+    """ Scrape details from a company page with retries on timeout. """
+    attempt = 0
 
-    page_text = browser.page_source
-    email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-    found_emails = re.findall(email_pattern, page_text)
-    email = found_emails[0] if found_emails else "N/A"
+    while attempt < retries:
+        try:
+            print(f"[INFO] Scraping: {url} (Attempt {attempt + 1}/{retries})")
+            browser.get(url)  # Try loading the page
+            time.sleep(3)
+            scroll_to_load(browser)  # Ensure all content is loaded
 
-    try:
-        phone = browser.find_element(By.CLASS_NAME, "tel-number").text.strip()
-    except:
-        phone = "N/A"
+            # Extract Company Details
+            try:
+                name = browser.find_element(By.TAG_NAME, "h1").text.strip()
+            except:
+                name = "N/A"
 
-    try:
-        location = browser.find_element(By.CLASS_NAME, "company-card__info--address").text.strip()
-    except:
-        location = "N/A"
+            page_text = browser.page_source
+            email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+            found_emails = re.findall(email_pattern, page_text)
+            email = found_emails[0] if found_emails else "N/A"
 
-    return {"Name": name, "Email": email, "Phone": phone, "Location": location, "Profile URL": url}
+            try:
+                phone = browser.find_element(By.CLASS_NAME, "tel-number").text.strip()
+            except:
+                phone = "N/A"
 
+            try:
+                location = browser.find_element(By.CLASS_NAME, "company-card__info--address").text.strip()
+            except:
+                location = "N/A"
+
+            return {"Name": name, "Email": email, "Phone": phone, "Location": location, "Profile URL": url}
+
+        except Exception as e:
+            print(f"[ERROR] Failed to scrape {url} (Attempt {attempt + 1}/{retries}): {e}")
+            attempt += 1
+            time.sleep(5)  # Short delay before retrying
+
+    print(f"[ERROR] Skipped {url} after {retries} failed attempts.")
+    return None
 
 # ======= Export to CSV =======
 def export_to_csv(data, filename="scraped_companies.csv"):
@@ -203,6 +216,7 @@ def export_to_csv(data, filename="scraped_companies.csv"):
 # ======= Main =======
 if __name__ == "__main__":
     browser = init_browser()
+    browser.set_page_load_timeout(300)  # Increase timeout to 5 minutes
 
     niche = input("Enter the niche to search for: ").strip()
     max_pages = int(input("Enter the number of pages to scrape: ").strip())
