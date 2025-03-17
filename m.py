@@ -57,6 +57,7 @@ def scroll_to_load(browser):
     # Initial slow scroll to load most content
     print("[INFO] Initial slow scroll to load content...")
     while True:
+        time.sleep(0.9)
         browser.execute_script("window.scrollBy(0, 200);")  # Small steps down
         time.sleep(1)
         new_height = browser.execute_script("return document.body.scrollHeight")
