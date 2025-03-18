@@ -50,28 +50,37 @@ def accept_cookies(browser):
 
 
 # ======= Scroll to Load Dynamic Content =======
-def scroll_to_load(browser):
-    """ Enhanced scrolling to load all dynamic content: slow initial scroll, then fast up and down. """
+def enhanced_scroll_to_load(browser, max_attempts=10):
+    """ Thorough scrolling: Step-by-step with content checks to ensure full load. """
     last_height = browser.execute_script("return document.body.scrollHeight")
+    attempts = 0
 
-    # Initial slow scroll to load most content
-    print("[INFO] Initial slow scroll to load content...")
-    while True:
-        time.sleep(0.9)
-        browser.execute_script("window.scrollBy(0, 200);")  # Small steps down
-        time.sleep(1)
+    print("[INFO] Starting enhanced scroll...")
+
+    while attempts < max_attempts:
+        # Scroll down step by step
+        for _ in range(10):
+            browser.execute_script("window.scrollBy(0, 200);")  # Small steps
+            time.sleep(0.2)
+
+        # Wait for new content to load
         new_height = browser.execute_script("return document.body.scrollHeight")
-        if new_height == last_height:
-            break
-        last_height = new_height
 
-    # Fast scroll up and down to catch remaining lazy-loaded content
-    print("[INFO] Fast up-down scroll to ensure all content is loaded...")
+        if new_height == last_height:
+            attempts += 1
+            print(f"[INFO] No new content after scroll attempt {attempts}/{max_attempts}.")
+            time.sleep(0.5)
+        else:
+            last_height = new_height
+            attempts = 0  # Reset attempts if new content loads
+
+    # Fast scroll up and down to catch any remaining lazy-loaded content
+    print("[INFO] Fast up-down scrolling to catch lazy-loaded content...")
     for _ in range(3):
         browser.execute_script("window.scrollTo(0, 0);")  # Scroll to top
-        time.sleep(0.9)
-        browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")  # Scroll back down fast
-        time.sleep(0.9)
+        time.sleep(0.5)
+        browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")  # Scroll down fast
+        time.sleep(0.5)
 
     print("[✅] Enhanced scrolling complete. All content should be loaded.")
 
