@@ -86,6 +86,20 @@ def enhanced_scroll_to_load(browser, max_attempts=10):
 
 # ======= Collect All Page URLs =======
 def collect_all_page_urls(browser, niche, max_pages):
+    """ Collect all page URLs up to max_pages """
+    base_url = "https://www.europages.co.uk/en/search"
+    page_urls = [f"{base_url}?cserpRedirect=1&q={niche}"]  # First page URL
+
+    for page in range(2, max_pages + 1):  # Page 2 onwards
+        page_url = f"{base_url}/page/{page}?cserpRedirect=1&q={niche}"
+        page_urls.append(page_url)
+        print(f"[INFO] Collected page {page} URL: {page_url}")
+
+    print(f"[✅] Total pages collected: {len(page_urls)}")
+    return page_urls
+
+'''# ======= Collect All Page URLs =======
+def collect_all_page_urls(browser, niche, max_pages):
     """ Collect all page URLs up to max_pages or until no 'Next' button is found """
     search_url = f"https://www.europages.co.uk/en/search?cserpRedirect=1&q={niche}"
     browser.get(search_url)
@@ -136,7 +150,8 @@ def collect_all_page_urls(browser, niche, max_pages):
             break
 
     print(f"[✅] Total pages collected: {len(page_urls)}")
-    return page_urls
+    return page_urls 
+'''
 
 
 # ======= Collect Company Links =======
