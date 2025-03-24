@@ -89,6 +89,7 @@ def collect_all_page_urls(browser, niche, max_pages):
     """ Collect all page URLs up to max_pages """
     base_url = "https://www.europages.co.uk/en/search"
     page_urls = [f"{base_url}?cserpRedirect=1&q={niche}"]
+    accept_cookies(browser)
 
     for page in range(2, max_pages + 1):
         page_url = f"{base_url}/page/{page}?cserpRedirect=1&q={niche}"
