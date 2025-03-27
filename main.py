@@ -5,7 +5,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.common.exceptions import TimeoutException
 from tqdm import tqdm
 import time
 import csv
@@ -13,26 +13,11 @@ import json
 import os
 import re
 
-# ======= File Names for Saving Progress =======
-LINKS_FILE = "collected_links.json"
-SCRAPED_FILE = "scraped_data.json"
-CSV_FILE = "scraped_companies.csv"
-
-
-# ======= ChromeDriver Setup (Only Once) =======
-def update_chromedriver():
-    print("[INFO] Updating ChromeDriver...")
-    return ChromeDriverManager().install()
-
-
-CHROME_DRIVER_PATH = update_chromedriver()
-
-
-# ======= Browser Initialization (Single Instance) =======
+# ======= Initialize Browser =======
 def init_browser():
-    service = Service(CHROME_DRIVER_PATH)
+    service = Service(ChromeDriverManager().install())
     chrome_options = Options()
-
+    
     show_browser = input("Do you want to open the browser and watch it work? (yes/no): ").strip().lower()
     if show_browser == "no":
         chrome_options.add_argument("--headless")  # Run in headless mode
@@ -42,12 +27,10 @@ def init_browser():
     print("[INFO] Browser initialized.")
     return browser
 
-
-# ======= File Handling for Saving Progress =======
+# ======= File Handling =======
 def save_json(data, filename):
     with open(filename, "w") as file:
-        json.dump(data, file)
-
+        json.dump(data, file, indent=4)
 
 def load_json(filename):
     if os.path.exists(filename):
@@ -55,141 +38,159 @@ def load_json(filename):
             return json.load(file)
     return []
 
-
-# ======= Accept Cookies =======
+# ======= Accept Cookies Popups on Any Page =======
 def accept_cookies(browser):
     try:
-        cookie_button = WebDriverWait(browser, 5).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Accept') or contains(text(), 'accept')]"))
+        cookie_buttons = WebDriverWait(browser, 5).until(
+            EC.presence_of_all_elements_located((By.XPATH, "//button[contains(text(), 'Accept') or contains(text(), 'accept')]"))
         )
-        cookie_button.click()
-        print("[INFO] Cookie popup accepted.")
-        time.sleep(2)
+        for button in cookie_buttons:
+            try:
+                button.click()
+                print("[INFO] Cookie popup accepted.")
+                time.sleep(2)
+            except:
+                continue
     except TimeoutException:
         print("[INFO] No cookie popup found.")
 
+# ======= Extract Company Website from Europages Profile =======
+def get_company_website(browser):
+    try:
+        visit_site_button = WebDriverWait(browser, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "a.website-button"))
+        )
+        website_url = visit_site_button.get_attribute("href")
 
-# ======= Enhanced Scroll to Load Dynamic Content =======
-def enhanced_scroll_to_load(browser, max_attempts=10):
-    """ Thorough scrolling: Step-by-step with content checks to ensure full load. """
-    last_height = browser.execute_script("return document.body.scrollHeight")
-    attempts = 0
+        if website_url and website_url.startswith("http"):
+            print(f"[INFO] Found official website: {website_url}")
+            return website_url
+    except TimeoutException:
+        print("[INFO] No official site found.")
+        return None
+    return None
 
-    while attempts < max_attempts:
-        for _ in range(10):
-            browser.execute_script("window.scrollBy(0, 200);")
-            time.sleep(0.2)
+# ======= Extract Emails from the Official Website =======
+def extract_emails_from_website(browser, website_url):
+    try:
+        browser.get(website_url)
+        accept_cookies(browser)  # Accept cookies on company website
+        time.sleep(3)
+        
+        # Extract emails using regex
+        page_text = browser.page_source
+        emails = re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", page_text)
+        
+        return list(set(emails))  # Remove duplicates
+    except Exception as e:
+        print(f"[ERROR] Failed to extract emails from {website_url}: {e}")
+        return []
 
-        new_height = browser.execute_script("return document.body.scrollHeight")
-        if new_height == last_height:
-            attempts += 1
-            time.sleep(0.5)
-        else:
-            last_height = new_height
-            attempts = 0  # Reset attempts if new content loads
-
-
-# ======= Collect All Page URLs =======
-def collect_all_page_urls(niche, max_pages):
-    """ Generate all page URLs up to max_pages """
-    base_url = "https://www.europages.co.uk/en/search"
-    return [f"{base_url}?cserpRedirect=1&q={niche}"] + [
-        f"{base_url}/page/{page}?cserpRedirect=1&q={niche}" for page in range(2, max_pages + 1)
-    ]
-
-
-# ======= Collect Company Links (Resumable) =======
+# ======= Collect Europages Company Profile Links =======
 def collect_company_links(browser, page_urls):
-    """ Collect company profile links across all pages & save progress """
-    all_links = load_json(LINKS_FILE)
+    """ Collect Europages profile links & store them. """
+    collected_links = load_json("collected_links.json")
 
-    for i, url in enumerate(tqdm(page_urls, desc="Collecting Links", unit="page")):
-        if url in all_links:
-            print(f"[INFO] Skipping already processed page {i + 1}")
+    for url in tqdm(page_urls, desc="Collecting Europages Links", unit="page"):
+        if url in collected_links:
             continue
 
         browser.get(url)
-        enhanced_scroll_to_load(browser)
+        accept_cookies(browser)  # Accept cookies on each Europages page
+        time.sleep(3)
+        
+        # Extract company profile links
+        links = [link.get_attribute("href") for link in browser.find_elements(By.CSS_SELECTOR, "a[data-test='company-name']")]
+        links = [href for href in links if href and href.startswith("http")]
+        
+        collected_links.extend(links)
+        save_json(collected_links, "collected_links.json")
 
-        # Extract company links
-        links = browser.find_elements(By.CSS_SELECTOR, "a[data-test='company-name']")
-        for link in links:
-            href = link.get_attribute("href")
-            full_link = href if href.startswith("http") else f"https://www.europages.co.uk{href}"
+    print(f"[✅] Total Europages profiles collected: {len(collected_links)}")
+    return collected_links
 
-            if full_link not in all_links:
-                all_links.append(full_link)
-                save_json(all_links, LINKS_FILE)  # Save progress
+# ======= Collect Official Websites from Europages Profiles =======
+def collect_company_websites(browser, europages_links):
+    """ Visit each Europages profile & extract official website links. """
+    company_websites = load_json("company_websites.json")
+    
+    # Fix: Ensure company_websites is a dictionary
+    if not isinstance(company_websites, dict):
+        company_websites = {}
 
-    print(f"[✅] Total company links collected: {len(all_links)}")
-    return all_links
+    for link in tqdm(europages_links, desc="Extracting Official Websites", unit="company"):
+        if link in company_websites:  # Skip already processed profiles
+            continue
 
+        browser.get(link)
+        accept_cookies(browser)  # Accept cookies on company profile page
+        time.sleep(3)
 
-# ======= Scrape Company Details (Resumable) =======
-def scrape_company_details(browser, url, retries=3):
-    """ Scrape details from a company page with retries on timeout. """
-    attempt = 0
+        official_site = get_company_website(browser)
+        if official_site:
+            company_websites[link] = official_site  # Store as {europages_link: official_site}
+            save_json(company_websites, "company_websites.json")
 
-    while attempt < retries:
-        try:
-            print(f"[INFO] Scraping: {url} (Attempt {attempt + 1}/{retries})")
-            browser.get(url)
-            time.sleep(3)
-            enhanced_scroll_to_load(browser)
+    print(f"[✅] Total company websites collected: {len(company_websites)}")
+    return company_websites
 
-            # Extract Company Details
-            name = browser.find_element(By.TAG_NAME, "h1").text.strip() if browser.find_elements(By.TAG_NAME, "h1") else "N/A"
-            page_text = browser.page_source
-            email = re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", page_text)
-            phone = browser.find_element(By.CLASS_NAME, "tel-number").text.strip() if browser.find_elements(By.CLASS_NAME, "tel-number") else "N/A"
-            location = browser.find_element(By.CLASS_NAME, "company-card__info--address").text.strip() if browser.find_elements(By.CLASS_NAME, "company-card__info--address") else "N/A"
+# ======= Scrape Company Details from Official Websites =======
+def scrape_company_details(browser, company_websites, niche):
+    scraped_data = load_json(f"{niche}_scraped_data.json")
 
-            return {"Name": name, "Email": email[0] if email else "N/A", "Phone": phone, "Location": location, "Profile URL": url}
+    for europages_url, company_site in tqdm(company_websites.items(), desc="Scraping Company Details", unit="company"):
+        if any(d["Website"] == company_site for d in scraped_data):
+            continue  # Skip if already scraped
 
-        except Exception as e:
-            print(f"[ERROR] Failed {url} (Attempt {attempt + 1}/{retries}): {e}")
-            attempt += 1
-            time.sleep(5)
+        print(f"[INFO] Visiting official site: {company_site}")
+        emails = extract_emails_from_website(browser, company_site)
 
-    return None
+        if emails:
+            scraped_data.append({
+                "Europages Profile": europages_url,
+                "Website": company_site,
+                "Emails": emails
+            })
+            save_json(scraped_data, f"{niche}_scraped_data.json")
 
+    return scraped_data
 
 # ======= Export to CSV =======
-def export_to_csv(data, filename=CSV_FILE):
+def export_to_csv(data, filename):
     with open(filename, "w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=["Name", "Email", "Phone", "Location", "Profile URL"])
+        writer = csv.DictWriter(file, fieldnames=["Europages Profile", "Website", "Emails"])
         writer.writeheader()
-        writer.writerows(data)
+        for entry in data:
+            writer.writerow({
+                "Europages Profile": entry["Europages Profile"],
+                "Website": entry["Website"],
+                "Emails": ", ".join(entry["Emails"])
+            })
     print(f"[✅] Data exported to '{filename}'")
-
 
 # ======= Main Execution =======
 if __name__ == "__main__":
     browser = init_browser()
-    browser.set_page_load_timeout(300)
-
+    
     niche = input("Enter the niche to search for: ").strip()
     max_pages = int(input("Enter the number of pages to scrape: ").strip())
-
-    # Collect URLs & company links
-    page_urls = collect_all_page_urls(niche, max_pages)
-    company_links = collect_company_links(browser, page_urls)
-
-    # Resume from last scraped company
-    scraped_data = load_json(SCRAPED_FILE)
-    scraped_urls = {entry["Profile URL"] for entry in scraped_data}
-
-    # Scrape company details
-    for link in tqdm(company_links, desc="Scraping Details", unit="company"):
-        if link in scraped_urls:
-            continue  # Skip already scraped links
-
-        result = scrape_company_details(browser, link)
-        if result:
-            scraped_data.append(result)
-            save_json(scraped_data, SCRAPED_FILE)  # Save after each entry
-
-    # Export final data
-    export_to_csv(scraped_data)
+    
+    base_url = "https://www.europages.co.uk/en/search"
+    page_urls = [f"{base_url}?cserpRedirect=1&q={niche}"] + [
+        f"{base_url}/page/{page}?cserpRedirect=1&q={niche}" for page in range(2, max_pages + 1)
+    ]
+    
+    # Step 1: Collect Europages Company Profile Links
+    europages_links = collect_company_links(browser, page_urls)
+    
+    # Step 2: Collect Official Websites
+    company_websites = collect_company_websites(browser, europages_links)
+    
+    # Step 3: Scrape Company Details
+    scraped_data = scrape_company_details(browser, company_websites, niche)
+    
+    # Step 4: Export Data to CSV
+    export_to_csv(scraped_data, f"{niche}_scraped_companies.csv")
+    
     browser.quit()
     print("[✅] Scraping Complete!")
