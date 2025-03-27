@@ -113,9 +113,13 @@ def collect_company_links(browser, page_urls):
 def collect_company_websites(browser, europages_links):
     """ Visit each Europages profile & extract official website links. """
     company_websites = load_json("company_websites.json")
+    
+    # Fix: Ensure company_websites is a dictionary
+    if not isinstance(company_websites, dict):
+        company_websites = {}
 
     for link in tqdm(europages_links, desc="Extracting Official Websites", unit="company"):
-        if link in company_websites:
+        if link in company_websites:  # Skip already processed profiles
             continue
 
         browser.get(link)
@@ -124,7 +128,7 @@ def collect_company_websites(browser, europages_links):
 
         official_site = get_company_website(browser)
         if official_site:
-            company_websites[link] = official_site
+            company_websites[link] = official_site  # Store as {europages_link: official_site}
             save_json(company_websites, "company_websites.json")
 
     print(f"[✅] Total company websites collected: {len(company_websites)}")
